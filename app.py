@@ -1,6 +1,5 @@
 import io
 import os
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import (
@@ -17,6 +16,8 @@ from reportlab.lib.styles import (
     ParagraphStyle,
     getSampleStyleSheet,
 )
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
@@ -38,7 +39,28 @@ st.set_page_config(
 
 st.markdown(
     """
-
+<style>
+.kpi-card {
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-left: 6px solid #22c55e;
+}
+.kpi-card.warning { border-left-color: #f59e0b; }
+.kpi-card.excellent { border-left-color: #3b82f6; }
+.kpi-head { display: flex; justify-content: space-between; align-items: center; }
+.kpi-cat { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+.kpi-title { font-size: 15px; font-weight: 600; color: #f1f5f9; margin: 2px 0 6px 0; }
+.kpi-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; background: #22c55e; }
+.kpi-badge.warning { background: #f59e0b; }
+.kpi-badge.excellent { background: #3b82f6; }
+.kpi-val { font-size: 28px; font-weight: 700; color: #f8fafc; }
+.kpi-tgt { font-size: 12px; color: #cbd5e1; margin-top: 2px; }
+.kpi-range { font-size: 12px; color: #94a3b8; display: flex; gap: 14px; margin-top: 6px; }
+.kpi-remark { font-size: 12px; color: #e2e8f0; margin-top: 6px; font-style: italic; }
+</style>
 """,
     unsafe_allow_html=True,
 )
@@ -179,7 +201,33 @@ def get_sample_csv():
     ).encode("utf-8")
 
 
+def _register_pdf_fonts():
+    """Đăng ký font Unicode để PDF hiển thị được tiếng Việt."""
+    candidates = [
+        ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+        ("C:/Windows/Fonts/tahoma.ttf", "C:/Windows/Fonts/tahomabd.ttf"),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+        ),
+    ]
+    for regular, bold in candidates:
+        if os.path.exists(regular) and os.path.exists(bold):
+            try:
+                pdfmetrics.registerFont(TTFont("AppFont", regular))
+                pdfmetrics.registerFont(TTFont("AppFont-Bold", bold))
+                return "AppFont", "AppFont-Bold"
+            except Exception:
+                continue
+    return "Helvetica", "Helvetica-Bold"
+
+
 def generate_pdf_report(summary, bad_df):
+    font, font_b = _register_pdf_fonts()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf,
@@ -191,10 +239,13 @@ def generate_pdf_report(summary, bad_df):
     )
     story = []
     styles = getSampleStyleSheet()
+    normal = ParagraphStyle("N", parent=styles["Normal"], fontName=font)
+    h2_style = ParagraphStyle("H2", parent=styles["Heading2"], fontName=font_b)
 
     t_style = ParagraphStyle(
         "T",
         parent=styles["Heading1"],
+        fontName=font_b,
         fontSize=15,
         textColor=colors.HexColor("#0f172a"),
         spaceAfter=5,
@@ -209,7 +260,7 @@ def generate_pdf_report(summary, bad_df):
     story.append(
         Paragraph(
             f"Thời gian: {now_str}",
-            styles["Normal"],
+            normal,
         )
     )
     story.append(
@@ -237,10 +288,11 @@ def generate_pdf_report(summary, bad_df):
     t1 = Table(kpi_data, colWidths=[150, 100, 100, 150])
     t1.setStyle(
         TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e293b")),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 1), (-1, -1), font),
+            ("FONTNAME", (0, 0), (-1, 0), font_b),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
         ])
     )
     story.append(t1)
@@ -248,10 +300,12 @@ def generate_pdf_report(summary, bad_df):
 
     if not bad_df.empty:
         story.append(
-            Paragraph("**TOP WORST CELLS**", styles["Heading2"])
+            Paragraph("TOP WORST CELLS", h2_style)
         )
-        bcols = [c for c in bad_df.columns if c in ["Site Name", "Tên đối tượng"]] + \
-                [c for c in bad_df.columns if c not in ["Site Name", "Tên đối tượng"]][:4]
+        key_cols = ["Site Name", "Tên đối tượng"]
+        bcols = [c for c in bad_df.columns if c in key_cols] + [
+            c for c in bad_df.columns if c not in key_cols
+        ][:4]
         sub = bad_df[bcols].head(6)
 
         bdata = [bcols]
@@ -259,13 +313,15 @@ def generate_pdf_report(summary, bad_df):
             r_fmt = [f"{v:.2f}" if isinstance(v, float) else str(v) for v in row]
             bdata.append(r_fmt)
 
-        t2 = Table(bdata, colWidths=[110, 130, 80, 80, 80, 80])
+        t2 = Table(bdata)
         t2.setStyle(
             TableStyle([
-                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#b91c1c")),
-                ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-                ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-                ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#fca5a5")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b91c1c")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 1), (-1, -1), font),
+                ("FONTNAME", (0, 0), (-1, 0), font_b),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#fca5a5")),
             ])
         )
         story.append(t2)
@@ -425,245 +481,251 @@ st.markdown("---")
 
 def render_card(cat, title, val, tgt, min_v, max_v, remark, stt="good"):
     s_low = stt.lower()
-    # Nối chuỗi 1 dòng giúp chống văng khối code markdown
-    h1 = ''
-h2 = f'
+    # Nối chuỗi 1 dòng (không xuống dòng, không thụt lề) để Markdown
+    # không biến HTML thành khối code.
+    html = (
+        f'<div class="kpi-card {s_low}">'
+        f'<div class="kpi-head">'
+        f'<span class="kpi-cat">{cat}</span>'
+        f'<span class="kpi-badge {s_low}">{stt.upper()}</span>'
+        f"</div>"
+        f'<div class="kpi-title">{title}</div>'
+        f'<div class="kpi-val">{val}</div>'
+        f'<div class="kpi-tgt">Mục tiêu: {tgt}</div>'
+        f'<div class="kpi-range"><span>Min: {min_v}</span>'
+        f"<span>Max: {max_v}</span></div>"
+        f'<div class="kpi-remark">{remark}</div>'
+        f"</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
 
-{cat}
 
-{title}
+def get_series(col):
+    return filtered_df[col] if col in filtered_df.columns else pd.Series([0.0])
 
-'
-h3 = f'{stt.upper()}
 
-'
-h4 = f'
+s_cssr = get_series("Call Setup Success Rate")
+s_cdr = get_series("Service Drop (all service)")
+s_dl = get_series("DL_Throughput_Mbps")
+s_ul = get_series("UL_Throughput_Mbps")
+s_cqi = get_series("CQI_4G")
+s_prb = get_series("Resource Block Untilizing Rate Downlink (%)")
+s_intra = get_series("Intra-frequency HO (%)")
+s_irat = get_series("Inter-RAT HOSR (LTE to WCDMA) (%)")
+s_srvcc = get_series("SRVCC Success Rate (LTE to WCDMA)")
 
-{val}'
-h5 = f'Mục tiêu: {tgt}
+# (nhóm, tên KPI, series, format giá trị, format min/max, mục tiêu, nhận xét, hàm đánh giá)
+cards = [
+    # Row 1
+    ("Accessibility", "Call Setup SR (CSSR)", s_cssr, "{:.2f}%", "{:.2f}%",
+     ">=99.5%", "Rất ổn định",
+     lambda v: "GOOD" if v >= 99.5 else "WARNING"),
+    ("Retainability", "Service Drop Rate", s_cdr, "{:.3f}%", "{:.3f}%",
+     "<=0.1%", "Kéo bởi 3 bad cell",
+     lambda v: "WARNING" if v > 0.1 else "GOOD"),
+    ("Integrity", "User DL Throughput", s_dl, "{:.2f} Mbps", "{:.1f}M",
+     ">=15.0M", "+58% chuẩn",
+     lambda v: "EXCELLENT" if v >= 15.0 else "GOOD"),
+    # Row 2
+    ("Integrity", "User UL Throughput", s_ul, "{:.2f} Mbps", "{:.2f}M",
+     ">=1.5M", "+92% chuẩn",
+     lambda v: "EXCELLENT" if v >= 1.5 else "GOOD"),
+    ("Radio Quality", "CQI (CQI >= 7)", s_cqi, "{:.2f}%", "{:.1f}%",
+     ">=92.0%", "64QAM/256QAM tốt",
+     lambda v: "EXCELLENT" if v >= 92.0 else "WARNING"),
+    ("Capacity & Load", "PRB Utilization DL", s_prb, "{:.2f}%", "{:.1f}%",
+     "<=35.0%", "Dồi dào tài nguyên",
+     lambda v: "EXCELLENT" if v <= 35.0 else "WARNING"),
+    # Row 3
+    ("Mobility", "Intra-freq HO SR", s_intra, "{:.2f}%", "{:.2f}%",
+     ">=99.0%", "Chuyển giao mượt",
+     lambda v: "WARNING" if v < 99.0 else "GOOD"),
+    ("Mobility", "Inter-RAT HOSR", s_irat, "{:.2f}%", "{:.1f}%",
+     ">=95.0%", "Cần chỉnh Event B2",
+     lambda v: "WARNING" if v < 95.0 else "GOOD"),
+    ("Voice Continuity", "SRVCC Success Rate", s_srvcc, "{:.2f}%", "{:.1f}%",
+     ">=95.0%", "Đảm bảo thoại 3G",
+     lambda v: "EXCELLENT" if v >= 95.0 else "WARNING"),
+]
 
-'
-h6 = f'
-
-Min: {min_v} Max: {max_v}'
-h7 = f'{remark}
-
-'
-st.markdown(h1 + h2 + h3 + h4 + h5 + h6 + h7, unsafe_allow_html=True)
-
-s_cssr = filtered_df.get("Call Setup Success Rate", pd.Series([0]))
-s_cdr = filtered_df.get("Service Drop (all service)", pd.Series([0]))
-s_dl = filtered_df.get("DL_Throughput_Mbps", pd.Series([0]))
-s_ul = filtered_df.get("UL_Throughput_Mbps", pd.Series([0]))
-s_cqi = filtered_df.get("CQI_4G", pd.Series([0]))
-s_prb = filtered_df.get("Resource Block Untilizing Rate Downlink (%)", pd.Series([0]))
-s_intra = filtered_df.get("Intra-frequency HO (%)", pd.Series([0]))
-s_irat = filtered_df.get("Inter-RAT HOSR (LTE to WCDMA) (%)", pd.Series([0]))
-s_srvcc = filtered_df.get("SRVCC Success Rate (LTE to WCDMA)", pd.Series([0]))
-
-Row 1
-c1, c2, c3 = st.columns(3)
-with c1:
-v = s_cssr.mean()
-render_card("Accessibility", "Call Setup SR (CSSR)", f"{v:.2f}%", ">=99.5%", f"{s_cssr.min():.2f}%", f"{s_cssr.max():.2f}%", "Rất ổn định", "GOOD" if v >= 99.5 else "WARNING")
-with c2:
-v = s_cdr.mean()
-render_card("Retainability", "Service Drop Rate", f"{v:.3f}%", "<=0.1%", f"{s_cdr.min():.3f}%", f"{s_cdr.max():.3f}%", "Kéo bởi 3 bad cell", "WARNING" if v > 0.1 else "GOOD")
-with c3:
-v = s_dl.mean()
-render_card("Integrity", "User DL Throughput", f"{v:.2f} Mbps", ">=15.0M", f"{s_dl.min():.1f}M", f"{s_dl.max():.1f}M", "+58% chuẩn", "EXCELLENT" if v >= 15.0 else "GOOD")
-
-Row 2
-c1, c2, c3 = st.columns(3)
-with c1:
-v = s_ul.mean()
-render_card("Integrity", "User UL Throughput", f"{v:.2f} Mbps", ">=1.5M", f"{s_ul.min():.2f}M", f"{s_ul.max():.2f}M", "+92% chuẩn", "EXCELLENT" if v >= 1.5 else "GOOD")
-with c2:
-v = s_cqi.mean()
-render_card("Radio Quality", "CQI (CQI >= 7)", f"{v:.2f}%", ">=92.0%", f"{s_cqi.min():.1f}%", f"{s_cqi.max():.1f}%", "64QAM/256QAM tốt", "EXCELLENT" if v >= 92.0 else "WARNING")
-with c3:
-v = s_prb.mean()
-render_card("Capacity & Load", "PRB Utilization DL", f"{v:.2f}%", "<=35.0%", f"{s_prb.min():.1f}%", f"{s_prb.max():.1f}%", "Dồi dào tài nguyên", "EXCELLENT" if v <= 35.0 else "WARNING")
-
-Row 3
-c1, c2, c3 = st.columns(3)
-with c1:
-v = s_intra.mean()
-render_card("Mobility", "Intra-freq HO SR", f"{v:.2f}%", ">=99.0%", f"{s_intra.min():.2f}%", f"{s_intra.max():.2f}%", "Chuyển giao mượt", "WARNING" if v < 99.0 else "GOOD")
-with c2:
-v = s_irat.mean()
-render_card("Mobility", "Inter-RAT HOSR", f"{v:.2f}%", ">=95.0%", f"{s_irat.min():.1f}%", f"{s_irat.max():.1f}%", "Cần chỉnh Event B2", "WARNING" if v < 95.0 else "GOOD")
-with c3:
-v = s_srvcc.mean()
-render_card("Voice Continuity", "SRVCC Success Rate", f"{v:.2f}%", ">=95.0%", f"{s_srvcc.min():.1f}%", f"{s_srvcc.max():.1f}%", "Đảm bảo thoại 3G", "EXCELLENT" if v >= 95.0 else "WARNING")
+for row_start in range(0, len(cards), 3):
+    cols = st.columns(3)
+    for col, card in zip(cols, cards[row_start:row_start + 3]):
+        cat, title, series, fmt_v, fmt_mm, tgt, remark, judge = card
+        v = series.mean()
+        with col:
+            render_card(
+                cat,
+                title,
+                fmt_v.format(v),
+                tgt,
+                fmt_mm.format(series.min()),
+                fmt_mm.format(series.max()),
+                remark,
+                judge(v),
+            )
 
 st.markdown("---")
 
-----------------------------------
-6. UNIFIED DUAL-AXIS CHART
-----------------------------------
+# ----------------------------------
+# 6. UNIFIED DUAL-AXIS CHART
+# ----------------------------------
 st.subheader("📈 Biểu Đồ Xu Hướng KPI")
 
+TRAFFIC_COL = "Total Data Traffic Volume (GB)"
+if TRAFFIC_COL not in filtered_df.columns:
+    filtered_df = filtered_df.assign(**{TRAFFIC_COL: 0.0})
+
 kpi_dict = {
-"DL Throughput (Mbps)": "DL_Throughput_Mbps",
-"UL Throughput (Mbps)": "UL_Throughput_Mbps",
-"CQI 4G Index (%)": "CQI_4G",
-"PRB DL Utilization (%)": "Resource Block Untilizing Rate Downlink (%)",
-"Service Drop Rate (%)": "Service Drop (all service)",
-"Call Setup SR (%)": "Call Setup Success Rate",
-"Intra-Freq HO SR (%)": "Intra-frequency HO (%)",
-"Inter-RAT HOSR (%)": "Inter-RAT HOSR (LTE to WCDMA) (%)",
-"VoLTE Traffic (Erl)": "VoLTE Traffic (Erl)",
-"VoLTE Drop Rate (%)": "Call Drop Rate (VoLTE)",
+    "DL Throughput (Mbps)": "DL_Throughput_Mbps",
+    "UL Throughput (Mbps)": "UL_Throughput_Mbps",
+    "CQI 4G Index (%)": "CQI_4G",
+    "PRB DL Utilization (%)": "Resource Block Untilizing Rate Downlink (%)",
+    "Service Drop Rate (%)": "Service Drop (all service)",
+    "Call Setup SR (%)": "Call Setup Success Rate",
+    "Intra-Freq HO SR (%)": "Intra-frequency HO (%)",
+    "Inter-RAT HOSR (%)": "Inter-RAT HOSR (LTE to WCDMA) (%)",
+    "VoLTE Traffic (Erl)": "VoLTE Traffic (Erl)",
+    "VoLTE Drop Rate (%)": "Call Drop Rate (VoLTE)",
 }
 
 avail_kpis = {k: v for k, v in kpi_dict.items() if v in filtered_df.columns}
+if not avail_kpis:
+    st.warning("⚠️ File không có cột KPI nào để vẽ biểu đồ.")
+    st.stop()
+
+HOURLY_MODE = "Chỉ theo giờ (24h Avg)"
 
 ctrl_col1, ctrl_col2 = st.columns([1, 1])
 with ctrl_col1:
-time_mode = st.radio(
-"⏱ Thời gian:",
-["Chỉ theo giờ (24h Avg)", "Theo Ngày & Giờ (Timeline)"],
-horizontal=True,
-)
+    time_mode = st.radio(
+        "⏱ Thời gian:",
+        [HOURLY_MODE, "Theo Ngày & Giờ (Timeline)"],
+        horizontal=True,
+    )
 
 with ctrl_col2:
-sel_kpi_lbl = st.selectbox(
-"🎯 Chọn KPI kết hợp Traffic:",
-options=list(avail_kpis.keys()),
-)
+    sel_kpi_lbl = st.selectbox(
+        "🎯 Chọn KPI kết hợp Traffic:",
+        options=list(avail_kpis.keys()),
+    )
 
 sel_kpi_col = avail_kpis[sel_kpi_lbl]
 agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
+agg_map = {TRAFFIC_COL: "sum", sel_kpi_col: agg_func}
 
-if time_mode == "Chỉ theo giờ (24h Avg)":
-c_data = (
-filtered_df.groupby("Hour")
-.agg({"Total Data Traffic Volume (GB)": "sum", sel_kpi_col: agg_func})
-.reset_index()
-)
-x_axis = c_data["Hour"]
-x_title = "Giờ trong ngày (0h - 23h)"
+if time_mode == HOURLY_MODE:
+    c_data = filtered_df.groupby("Hour").agg(agg_map).reset_index()
+    x_axis = c_data["Hour"]
+    x_title = "Giờ trong ngày (0h - 23h)"
 else:
-c_data = (
-filtered_df.groupby(["Date", "Hour", "DateTime"])
-.agg({"Total Data Traffic Volume (GB)": "sum", sel_kpi_col: agg_func})
-.reset_index()
-.sort_values(by="DateTime")
-)
-c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m %H:00")
-x_axis = c_data["TimeLabel"]
-x_title = "Thời Gian (Ngày/Giờ)"
+    c_data = (
+        filtered_df.groupby(["Date", "Hour", "DateTime"])
+        .agg(agg_map)
+        .reset_index()
+        .sort_values(by="DateTime")
+    )
+    c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m %H:00")
+    x_axis = c_data["TimeLabel"]
+    x_title = "Thời Gian (Ngày/Giờ)"
 
 fig = make_subplots(specs=[[{"secondary_y": True}]])
 
 fig.add_trace(
-go.Bar(
-x=x_axis,
-y=c_data["Total Data Traffic Volume (GB)"],
-name="Traffic (GB)",
-marker_color="rgba(53, 162, 235, 0.5)",
-),
-secondary_y=False,
+    go.Bar(
+        x=x_axis,
+        y=c_data[TRAFFIC_COL],
+        name="Traffic (GB)",
+        marker_color="rgba(53, 162, 235, 0.5)",
+    ),
+    secondary_y=False,
 )
 
 fig.add_trace(
-go.Scatter(
-x=x_axis,
-y=c_data[sel_kpi_col],
-name=sel_kpi_lbl,
-mode="lines+markers",
-line=dict(color="#ff4d4f", width=2.5),
-),
-secondary_y=True,
+    go.Scatter(
+        x=x_axis,
+        y=c_data[sel_kpi_col],
+        name=sel_kpi_lbl,
+        mode="lines+markers",
+        line=dict(color="#ff4d4f", width=2.5),
+    ),
+    secondary_y=True,
 )
 
 fig.update_layout(
-title_text=f"📊 Biểu đồ Traffic và {sel_kpi_lbl}",
-template="plotly_dark",
-hovermode="x unified",
-height=420,
-margin=dict(l=10, r=10, t=40, b=10),
+    title_text=f"📊 Biểu đồ Traffic và {sel_kpi_lbl}",
+    template="plotly_dark",
+    hovermode="x unified",
+    height=420,
+    margin=dict(l=10, r=10, t=40, b=10),
 )
 
 fig.update_xaxes(
-title_text=x_title,
-type="category" if time_mode != "Chỉ theo giờ (24h Avg)" else None,
+    title_text=x_title,
+    type="category" if time_mode != HOURLY_MODE else None,
 )
 fig.update_yaxes(title_text="Traffic (GB)", secondary_y=False, showgrid=False)
 fig.update_yaxes(
-title_text=sel_kpi_lbl,
-secondary_y=True,
-showgrid=True,
-gridcolor="rgba(255,255,255,0.1)",
+    title_text=sel_kpi_lbl,
+    secondary_y=True,
+    showgrid=True,
+    gridcolor="rgba(255,255,255,0.1)",
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 st.markdown("---")
 
-----------------------------------
-7. WORST CELLS MATRIX & PDF REPORT
-----------------------------------
+# ----------------------------------
+# 7. WORST CELLS MATRIX & PDF REPORT
+# ----------------------------------
 st.subheader("⚠️ Danh Sách Worst Cells & Báo Cáo")
 
+res_df = pd.DataFrame()
+
 if cell_col:
-kpi_opt = st.selectbox(
-"🎯 Lọc Worst Cells theo KPI:",
-[
-"Service Drop Rate (CDR)",
-"Low Downlink Throughput",
-"Low Uplink Throughput",
-"Low CQI (Poor RF Coverage)",
-"High PRB Congestion",
-"VoLTE Call Drop Rate",
-],
-)top_n = st.slider("Số lượng hiển thị:", 5, 30, 10)
+    # kpi -> (cột dùng để sắp xếp, sắp xếp giảm dần?)
+    worst_rules = {
+        "Service Drop Rate (CDR)": ("Service Drop (all service)", True),
+        "Low Downlink Throughput": ("DL_Throughput_Mbps", False),
+        "Low Uplink Throughput": ("UL_Throughput_Mbps", False),
+        "Low CQI (Poor RF Coverage)": ("CQI_4G", False),
+        "High PRB Congestion": (
+            "Resource Block Untilizing Rate Downlink (%)",
+            True,
+        ),
+        "VoLTE Call Drop Rate": ("Call Drop Rate (VoLTE)", True),
+    }
 
-cell_agg = (
-    filtered_df.groupby([site_col, cell_col])
-    .agg(
-        {
-            col: "mean"
-            for col in [
-                "Service Drop (all service)",
-                "DL_Throughput_Mbps",
-                "UL_Throughput_Mbps",
-                "CQI_4G",
-                "Resource Block Untilizing Rate Downlink (%)",
-                "Call Drop Rate (VoLTE)",
-                "Total Data Traffic Volume (GB)",
-            ]
-            if col in filtered_df.columns
-        }
+    kpi_opt = st.selectbox("🎯 Lọc Worst Cells theo KPI:", list(worst_rules.keys()))
+    top_n = st.slider("Số lượng hiển thị:", 5, 30, 10)
+
+    group_cols = [c for c in (site_col, cell_col) if c]
+    agg_cols = [
+        "Service Drop (all service)",
+        "DL_Throughput_Mbps",
+        "UL_Throughput_Mbps",
+        "CQI_4G",
+        "Resource Block Untilizing Rate Downlink (%)",
+        "Call Drop Rate (VoLTE)",
+        TRAFFIC_COL,
+    ]
+    cell_agg = (
+        filtered_df.groupby(group_cols)
+        .agg({c: "mean" for c in agg_cols if c in filtered_df.columns})
+        .reset_index()
     )
-    .reset_index()
-)
 
-if kpi_opt == "Service Drop Rate (CDR)":
-    res_df = cell_agg.sort_values(
-        by="Service Drop (all service)", ascending=False
-    ).head(top_n)
-elif kpi_opt == "Low Downlink Throughput":
-    res_df = cell_agg.sort_values(
-        by="DL_Throughput_Mbps", ascending=True
-    ).head(top_n)
-elif kpi_opt == "Low Uplink Throughput":
-    res_df = cell_agg.sort_values(
-        by="UL_Throughput_Mbps", ascending=True
-    ).head(top_n)
-elif kpi_opt == "Low CQI (Poor RF Coverage)":
-    res_df = cell_agg.sort_values(by="CQI_4G", ascending=True).head(top_n)
-elif kpi_opt == "High PRB Congestion":
-    res_df = cell_agg.sort_values(
-        by="Resource Block Untilizing Rate Downlink (%)", ascending=False
-    ).head(top_n)
+    sort_col, descending = worst_rules[kpi_opt]
+    if sort_col in cell_agg.columns:
+        res_df = cell_agg.sort_values(by=sort_col, ascending=not descending).head(top_n)
+    else:
+        st.warning(f"⚠️ File không có cột dữ liệu cho tiêu chí: {kpi_opt}")
+        res_df = cell_agg.head(top_n)
+
+    st.dataframe(res_df, width="stretch")
 else:
-    res_df = cell_agg.sort_values(
-        by="Call Drop Rate (VoLTE)", ascending=False
-    ).head(top_n)
-
-st.dataframe(res_df, use_container_width=True)
+    st.info("ℹ️ File không có cột 'Tên đối tượng' nên không lập được danh sách cell.")
 
 st.markdown("### 📄 Báo Cáo Cấp Trên")
 summary_data = {
@@ -686,4 +748,3 @@ st.download_button(
     file_name="Bao_Cao_Toi_Uu_Mang_4G.pdf",
     mime="application/pdf",
 )
-st.caption("🚀 Universal 4G RAN Dashboard — Streamlit & ReportLab")
