@@ -1,6 +1,11 @@
 import io
 import os
+from xml.sax.saxutils import escape
 import pandas as pd
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import (
     make_subplots,
@@ -19,6 +24,8 @@ from reportlab.lib.styles import (
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Image,
+    PageBreak,
     HRFlowable,
     Paragraph,
     SimpleDocTemplate,
@@ -41,25 +48,27 @@ st.markdown(
     """
 <style>
 .kpi-card {
-    border-radius: 12px;
-    padding: 14px 16px;
-    margin-bottom: 14px;
+    border-radius: 8px;
+    padding: 7px 10px;
+    margin-bottom: 8px;
     background: #1e293b;
     border: 1px solid #334155;
-    border-left: 6px solid #22c55e;
+    border-left: 4px solid #22c55e;
+    line-height: 1.25;
 }
 .kpi-card.warning { border-left-color: #f59e0b; }
 .kpi-card.excellent { border-left-color: #3b82f6; }
+.kpi-card.info { border-left-color: #64748b; }
 .kpi-head { display: flex; justify-content: space-between; align-items: center; }
-.kpi-cat { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
-.kpi-title { font-size: 15px; font-weight: 600; color: #f1f5f9; margin: 2px 0 6px 0; }
-.kpi-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; background: #22c55e; }
+.kpi-cat { font-size: 9.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; }
+.kpi-title { font-size: 12px; font-weight: 600; color: #f1f5f9; margin: 1px 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-badge { font-size: 8.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; color: #fff; background: #22c55e; }
 .kpi-badge.warning { background: #f59e0b; }
 .kpi-badge.excellent { background: #3b82f6; }
-.kpi-val { font-size: 28px; font-weight: 700; color: #f8fafc; }
-.kpi-tgt { font-size: 12px; color: #cbd5e1; margin-top: 2px; }
-.kpi-range { font-size: 12px; color: #94a3b8; display: flex; gap: 14px; margin-top: 6px; }
-.kpi-remark { font-size: 12px; color: #e2e8f0; margin-top: 6px; font-style: italic; }
+.kpi-badge.info { background: #64748b; }
+.kpi-val { font-size: 19px; font-weight: 700; color: #f8fafc; }
+.kpi-meta { font-size: 10px; color: #94a3b8; }
+.kpi-remark { font-size: 10px; color: #cbd5e1; font-style: italic; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -220,13 +229,51 @@ def _register_pdf_fonts():
             try:
                 pdfmetrics.registerFont(TTFont("AppFont", regular))
                 pdfmetrics.registerFont(TTFont("AppFont-Bold", bold))
+                pdfmetrics.registerFontFamily(
+                    "AppFont",
+                    normal="AppFont",
+                    bold="AppFont-Bold",
+                    italic="AppFont",
+                    boldItalic="AppFont-Bold",
+                )
                 return "AppFont", "AppFont-Bold"
             except Exception:
                 continue
     return "Helvetica", "Helvetica-Bold"
 
 
-def generate_pdf_report(summary, bad_df):
+def _chart_png(title, x, traffic, kpi=None, kpi_label=""):
+    """Vẽ biểu đồ Traffic (cột) + KPI (đường) thành ảnh PNG cho PDF."""
+    fig, ax1 = plt.subplots(figsize=(5.6, 2.4), dpi=160)
+    ax1.bar(x, traffic, color="#93c5fd", width=0.7)
+    ax1.set_ylabel("Traffic (GB)", fontsize=7)
+    ax1.set_xlabel("Giờ", fontsize=7)
+    ax1.tick_params(labelsize=7)
+    ax1.set_xticks(list(x))
+    ax1.grid(axis="y", alpha=0.25)
+    if kpi is not None:
+        ax2 = ax1.twinx()
+        ax2.plot(x, kpi, color="#ef4444", marker="o", markersize=3, linewidth=1.5)
+        ax2.set_ylabel(kpi_label, fontsize=7)
+        ax2.tick_params(labelsize=7)
+    ax1.set_title(title, fontsize=9, fontweight="bold")
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+STATUS_COLORS = {
+    "EXCELLENT": ("#dbeafe", "#3b82f6"),
+    "GOOD": ("#dcfce7", "#22c55e"),
+    "WARNING": ("#fef3c7", "#f59e0b"),
+    "INFO": ("#f1f5f9", "#64748b"),
+}
+
+
+def generate_pdf_report(cards, charts, bad_df, info_line=""):
     font, font_b = _register_pdf_fonts()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -237,98 +284,135 @@ def generate_pdf_report(summary, bad_df):
         topMargin=20,
         bottomMargin=20,
     )
-    story = []
     styles = getSampleStyleSheet()
-    normal = ParagraphStyle("N", parent=styles["Normal"], fontName=font)
-    h2_style = ParagraphStyle("H2", parent=styles["Heading2"], fontName=font_b)
-
     t_style = ParagraphStyle(
-        "T",
-        parent=styles["Heading1"],
-        fontName=font_b,
-        fontSize=15,
-        textColor=colors.HexColor("#0f172a"),
-        spaceAfter=5,
+        "T", parent=styles["Heading1"], fontName=font_b,
+        fontSize=15, textColor=colors.HexColor("#0f172a"), spaceAfter=5,
+    )
+    normal = ParagraphStyle("N", parent=styles["Normal"], fontName=font)
+    h2_style = ParagraphStyle(
+        "H2", parent=styles["Heading2"], fontName=font_b, spaceBefore=6
+    )
+    card_style = ParagraphStyle(
+        "Card", parent=styles["Normal"], fontName=font, fontSize=7.5, leading=11
     )
 
-    now_str = pd.Timestamp.now().strftime(
-        "%d/%m/%Y %H:%M"
-    )
-    story.append(
-        Paragraph("BÁO CÁO TỐI ƯU MẠNG 4G", t_style)
-    )
-    story.append(
-        Paragraph(
-            f"Thời gian: {now_str}",
-            normal,
-        )
-    )
+    story = []
+    now_str = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
+    story.append(Paragraph("BÁO CÁO TỐI ƯU MẠNG 4G", t_style))
+    story.append(Paragraph(f"Thời gian: {now_str}", normal))
+    if info_line:
+        story.append(Paragraph(escape(info_line), normal))
     story.append(
         HRFlowable(
-            width="100%",
-            thickness=1,
-            color=colors.HexColor("#3b82f6"),
-            spaceAfter=8,
+            width="100%", thickness=1, color=colors.HexColor("#3b82f6"),
+            spaceBefore=4, spaceAfter=8,
         )
     )
 
-    kpi_data = [
-        ["KPI", "Giá trị", "Chỉ tiêu", "Đánh giá"],
-        ["CSSR", f"{summary.get('cssr',0):.2f}%", ">=99.5%", "Tốt"],
-        ["Service Drop", f"{summary.get('drop',0):.3f}%", "<=0.1%", "Tốt"],
-        ["DL Throughput", f"{summary.get('dl',0):.2f}M", ">=15M", "Đạt"],
-        ["UL Throughput", f"{summary.get('ul',0):.2f}M", ">=1.5M", "Đạt"],
-        ["CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=92%", "Tốt"],
-        ["PRB DL Util", f"{summary.get('prb',0):.2f}%", "<=35%", "Dồi dào"],
-        ["Intra-HO SR", f"{summary.get('intra',0):.2f}%", ">=99%", "Mượt"],
-        ["IRAT-HOSR", f"{summary.get('irat',0):.2f}%", ">=95%", "Theo dõi"],
-        ["SRVCC SR", f"{summary.get('srvcc',0):.2f}%", ">=95%", "Đạt"],
-    ]
-
-    t1 = Table(kpi_data, colWidths=[150, 100, 100, 150])
-    t1.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 1), (-1, -1), font),
-            ("FONTNAME", (0, 0), (-1, 0), font_b),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ])
-    )
-    story.append(t1)
-    story.append(Spacer(1, 10))
-
-    if not bad_df.empty:
-        story.append(
-            Paragraph("TOP WORST CELLS", h2_style)
+    # ---- KPI cards (lưới 5 cột) ----
+    story.append(Paragraph("TỔNG QUAN KPI", h2_style))
+    per_row = 5
+    rows, style_cmds = [], []
+    for r, start in enumerate(range(0, len(cards), per_row)):
+        row = []
+        for c in range(per_row):
+            if start + c >= len(cards):
+                row.append("")
+                continue
+            k = {key: escape(str(v)) for key, v in cards[start + c].items()}
+            bg, accent = STATUS_COLORS.get(
+                cards[start + c]["status"].upper(), STATUS_COLORS["INFO"]
+            )
+            html = (
+                f'<font size="6.5" color="#64748b">{k["cat"].upper()}</font> '
+                f'<font size="6.5" color="{accent}"><b>[{k["status"].upper()}]</b></font><br/>'
+                f'<b>{k["title"]}</b><br/>'
+                f'<font size="12"><b>{k["val"]}</b></font><br/>'
+                f'Mục tiêu: {k["tgt"]}<br/>'
+                f'Min {k["min"]} | Max {k["max"]}<br/>'
+                f'<i>{k["remark"]}</i>'
+            )
+            row.append(Paragraph(html, card_style))
+            style_cmds.append(("BACKGROUND", (c, r), (c, r), colors.HexColor(bg)))
+            style_cmds.append(
+                ("LINEABOVE", (c, r), (c, r), 3, colors.HexColor(accent))
+            )
+        rows.append(row)
+    cards_tbl = Table(rows, colWidths=[160] * per_row)
+    cards_tbl.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 4, colors.white),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+            + style_cmds
         )
+    )
+    story.append(cards_tbl)
+
+    # ---- Biểu đồ từng KPI (2 biểu đồ / hàng) ----
+    if charts:
+        story.append(PageBreak())
+        story.append(Paragraph("BIỂU ĐỒ KPI THEO GIỜ (TRUNG BÌNH 24H)", h2_style))
+        imgs = []
+        for ch in charts:
+            png = _chart_png(
+                ch["title"], ch["x"], ch["traffic"], ch.get("kpi"), ch.get("label", "")
+            )
+            imgs.append(Image(png, width=385, height=165))
+        grid = [imgs[i:i + 2] for i in range(0, len(imgs), 2)]
+        if len(grid[-1]) == 1:
+            grid[-1].append("")
+        chart_tbl = Table(grid, colWidths=[400, 400])
+        chart_tbl.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+        story.append(chart_tbl)
+
+    # ---- Worst cells ----
+    if bad_df is not None and not bad_df.empty:
+        story.append(PageBreak())
+        story.append(Paragraph("TOP WORST CELLS", h2_style))
         key_cols = ["Site Name", "Tên đối tượng"]
         bcols = [c for c in bad_df.columns if c in key_cols] + [
             c for c in bad_df.columns if c not in key_cols
         ][:4]
-        sub = bad_df[bcols].head(6)
-
+        sub = bad_df[bcols].head(15)
         bdata = [bcols]
         for _, row in sub.iterrows():
-            r_fmt = [f"{v:.2f}" if isinstance(v, float) else str(v) for v in row]
-            bdata.append(r_fmt)
-
-        t2 = Table(bdata)
+            bdata.append(
+                [f"{v:.2f}" if isinstance(v, float) else str(v) for v in row]
+            )
+        t2 = Table(bdata, repeatRows=1)
         t2.setStyle(
-            TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b91c1c")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 1), (-1, -1), font),
-                ("FONTNAME", (0, 0), (-1, 0), font_b),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#fca5a5")),
-            ])
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b91c1c")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 1), (-1, -1), font),
+                    ("FONTNAME", (0, 0), (-1, 0), font_b),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#fca5a5")),
+                ]
+            )
         )
         story.append(t2)
 
     doc.build(story)
     buf.seek(0)
     return buf
+
 
 
 # ----------------------------------
@@ -463,11 +547,15 @@ if filtered_df.empty:
     st.stop()
 
 # ----------------------------------
-# 5. HEADER & CARD HTML (ONE-LINE STR)
+# 5. HEADER & KPI CARDS
 # ----------------------------------
 cell_col = "Tên đối tượng" if "Tên đối tượng" in df.columns else None
 num_cells = filtered_df[cell_col].nunique() if cell_col else 0
 num_sites = filtered_df[site_col].nunique() if site_col else 0
+
+TRAFFIC_COL = "Total Data Traffic Volume (GB)"
+if TRAFFIC_COL not in filtered_df.columns:
+    filtered_df = filtered_df.assign(**{TRAFFIC_COL: 0.0})
 
 st.title("📡 4G/LTE RAN Dashboard")
 st.markdown(
@@ -479,22 +567,21 @@ st.markdown(
 st.markdown("---")
 
 
-def render_card(cat, title, val, tgt, min_v, max_v, remark, stt="good"):
-    s_low = stt.lower()
+def render_card(c):
+    s_low = c["status"].lower()
     # Nối chuỗi 1 dòng (không xuống dòng, không thụt lề) để Markdown
     # không biến HTML thành khối code.
     html = (
-        f'<div class="kpi-card {s_low}">'
+        f'<div class="kpi-card {s_low}" title="{c["remark"]}">'
         f'<div class="kpi-head">'
-        f'<span class="kpi-cat">{cat}</span>'
-        f'<span class="kpi-badge {s_low}">{stt.upper()}</span>'
+        f'<span class="kpi-cat">{c["cat"]}</span>'
+        f'<span class="kpi-badge {s_low}">{c["status"].upper()}</span>'
         f"</div>"
-        f'<div class="kpi-title">{title}</div>'
-        f'<div class="kpi-val">{val}</div>'
-        f'<div class="kpi-tgt">Mục tiêu: {tgt}</div>'
-        f'<div class="kpi-range"><span>Min: {min_v}</span>'
-        f"<span>Max: {max_v}</span></div>"
-        f'<div class="kpi-remark">{remark}</div>'
+        f'<div class="kpi-title">{c["title"]}</div>'
+        f'<div class="kpi-val">{c["val"]}</div>'
+        f'<div class="kpi-meta">Mục tiêu: {c["tgt"]}</div>'
+        f'<div class="kpi-meta">Min {c["min"]} · Max {c["max"]}</div>'
+        f'<div class="kpi-remark">{c["remark"]}</div>'
         f"</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
@@ -504,6 +591,7 @@ def get_series(col):
     return filtered_df[col] if col in filtered_df.columns else pd.Series([0.0])
 
 
+s_traffic = get_series(TRAFFIC_COL)
 s_cssr = get_series("Call Setup Success Rate")
 s_cdr = get_series("Service Drop (all service)")
 s_dl = get_series("DL_Throughput_Mbps")
@@ -514,56 +602,72 @@ s_intra = get_series("Intra-frequency HO (%)")
 s_irat = get_series("Inter-RAT HOSR (LTE to WCDMA) (%)")
 s_srvcc = get_series("SRVCC Success Rate (LTE to WCDMA)")
 
-# (nhóm, tên KPI, series, format giá trị, format min/max, mục tiêu, nhận xét, hàm đánh giá)
-cards = [
+if "Traffic Volumn DL (GB)" in filtered_df.columns and "Traffic Volume UL (GB)" in filtered_df.columns:
+    traffic_remark = (
+        f"DL {filtered_df['Traffic Volumn DL (GB)'].sum():,.1f} | "
+        f"UL {filtered_df['Traffic Volume UL (GB)'].sum():,.1f} GB"
+    )
+else:
+    traffic_remark = "Tổng lưu lượng DL + UL"
+
+# (nhóm, tên KPI, series, cách gộp, format giá trị, format min/max,
+#  mục tiêu, nhận xét, hàm đánh giá)
+card_specs = [
     # Row 1
-    ("Accessibility", "Call Setup SR (CSSR)", s_cssr, "{:.2f}%", "{:.2f}%",
+    ("Traffic", "Total Traffic", s_traffic, "sum", "{:,.1f} GB", "{:,.2f}",
+     "—", traffic_remark, lambda v: "INFO"),
+    ("Accessibility", "Call Setup SR (CSSR)", s_cssr, "mean", "{:.2f}%", "{:.2f}%",
      ">=99.5%", "Rất ổn định",
      lambda v: "GOOD" if v >= 99.5 else "WARNING"),
-    ("Retainability", "Service Drop Rate", s_cdr, "{:.3f}%", "{:.3f}%",
+    ("Retainability", "Service Drop Rate", s_cdr, "mean", "{:.3f}%", "{:.3f}%",
      "<=0.1%", "Kéo bởi 3 bad cell",
      lambda v: "WARNING" if v > 0.1 else "GOOD"),
-    ("Integrity", "User DL Throughput", s_dl, "{:.2f} Mbps", "{:.1f}M",
+    ("Integrity", "User DL Throughput", s_dl, "mean", "{:.2f} Mbps", "{:.1f}M",
      ">=15.0M", "+58% chuẩn",
      lambda v: "EXCELLENT" if v >= 15.0 else "GOOD"),
-    # Row 2
-    ("Integrity", "User UL Throughput", s_ul, "{:.2f} Mbps", "{:.2f}M",
+    ("Integrity", "User UL Throughput", s_ul, "mean", "{:.2f} Mbps", "{:.2f}M",
      ">=1.5M", "+92% chuẩn",
      lambda v: "EXCELLENT" if v >= 1.5 else "GOOD"),
-    ("Radio Quality", "CQI (CQI >= 7)", s_cqi, "{:.2f}%", "{:.1f}%",
+    # Row 2
+    ("Radio Quality", "CQI (CQI >= 7)", s_cqi, "mean", "{:.2f}%", "{:.1f}%",
      ">=92.0%", "64QAM/256QAM tốt",
      lambda v: "EXCELLENT" if v >= 92.0 else "WARNING"),
-    ("Capacity & Load", "PRB Utilization DL", s_prb, "{:.2f}%", "{:.1f}%",
+    ("Capacity", "PRB Utilization DL", s_prb, "mean", "{:.2f}%", "{:.1f}%",
      "<=35.0%", "Dồi dào tài nguyên",
      lambda v: "EXCELLENT" if v <= 35.0 else "WARNING"),
-    # Row 3
-    ("Mobility", "Intra-freq HO SR", s_intra, "{:.2f}%", "{:.2f}%",
+    ("Mobility", "Intra-freq HO SR", s_intra, "mean", "{:.2f}%", "{:.2f}%",
      ">=99.0%", "Chuyển giao mượt",
      lambda v: "WARNING" if v < 99.0 else "GOOD"),
-    ("Mobility", "Inter-RAT HOSR", s_irat, "{:.2f}%", "{:.1f}%",
+    ("Mobility", "Inter-RAT HOSR", s_irat, "mean", "{:.2f}%", "{:.1f}%",
      ">=95.0%", "Cần chỉnh Event B2",
      lambda v: "WARNING" if v < 95.0 else "GOOD"),
-    ("Voice Continuity", "SRVCC Success Rate", s_srvcc, "{:.2f}%", "{:.1f}%",
+    ("Voice", "SRVCC Success Rate", s_srvcc, "mean", "{:.2f}%", "{:.1f}%",
      ">=95.0%", "Đảm bảo thoại 3G",
      lambda v: "EXCELLENT" if v >= 95.0 else "WARNING"),
 ]
 
-for row_start in range(0, len(cards), 3):
-    cols = st.columns(3)
-    for col, card in zip(cols, cards[row_start:row_start + 3]):
-        cat, title, series, fmt_v, fmt_mm, tgt, remark, judge = card
-        v = series.mean()
+cards = []
+for cat, title, series, how, fmt_v, fmt_mm, tgt, remark, judge in card_specs:
+    v = series.sum() if how == "sum" else series.mean()
+    cards.append(
+        {
+            "cat": cat,
+            "title": title,
+            "val": fmt_v.format(v),
+            "tgt": tgt,
+            "min": fmt_mm.format(series.min()),
+            "max": fmt_mm.format(series.max()),
+            "remark": remark,
+            "status": judge(v),
+        }
+    )
+
+CARDS_PER_ROW = 5
+for row_start in range(0, len(cards), CARDS_PER_ROW):
+    cols = st.columns(CARDS_PER_ROW, gap="small")
+    for col, card in zip(cols, cards[row_start:row_start + CARDS_PER_ROW]):
         with col:
-            render_card(
-                cat,
-                title,
-                fmt_v.format(v),
-                tgt,
-                fmt_mm.format(series.min()),
-                fmt_mm.format(series.max()),
-                remark,
-                judge(v),
-            )
+            render_card(card)
 
 st.markdown("---")
 
@@ -571,10 +675,6 @@ st.markdown("---")
 # 6. UNIFIED DUAL-AXIS CHART
 # ----------------------------------
 st.subheader("📈 Biểu Đồ Xu Hướng KPI")
-
-TRAFFIC_COL = "Total Data Traffic Volume (GB)"
-if TRAFFIC_COL not in filtered_df.columns:
-    filtered_df = filtered_df.assign(**{TRAFFIC_COL: 0.0})
 
 kpi_dict = {
     "DL Throughput (Mbps)": "DL_Throughput_Mbps",
@@ -585,6 +685,7 @@ kpi_dict = {
     "Call Setup SR (%)": "Call Setup Success Rate",
     "Intra-Freq HO SR (%)": "Intra-frequency HO (%)",
     "Inter-RAT HOSR (%)": "Inter-RAT HOSR (LTE to WCDMA) (%)",
+    "SRVCC Success Rate (%)": "SRVCC Success Rate (LTE to WCDMA)",
     "VoLTE Traffic (Erl)": "VoLTE Traffic (Erl)",
     "VoLTE Drop Rate (%)": "Call Drop Rate (VoLTE)",
 }
@@ -593,6 +694,11 @@ avail_kpis = {k: v for k, v in kpi_dict.items() if v in filtered_df.columns}
 if not avail_kpis:
     st.warning("⚠️ File không có cột KPI nào để vẽ biểu đồ.")
     st.stop()
+
+
+def kpi_agg(label):
+    return "sum" if "Traffic" in label or "Erl" in label else "mean"
+
 
 HOURLY_MODE = "Chỉ theo giờ (24h Avg)"
 
@@ -611,8 +717,7 @@ with ctrl_col2:
     )
 
 sel_kpi_col = avail_kpis[sel_kpi_lbl]
-agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
-agg_map = {TRAFFIC_COL: "sum", sel_kpi_col: agg_func}
+agg_map = {TRAFFIC_COL: "sum", sel_kpi_col: kpi_agg(sel_kpi_lbl)}
 
 if time_mode == HOURLY_MODE:
     c_data = filtered_df.groupby("Hour").agg(agg_map).reset_index()
@@ -682,6 +787,7 @@ st.markdown("---")
 st.subheader("⚠️ Danh Sách Worst Cells & Báo Cáo")
 
 res_df = pd.DataFrame()
+kpi_opt, top_n = "", 0
 
 if cell_col:
     # kpi -> (cột dùng để sắp xếp, sắp xếp giảm dần?)
@@ -728,23 +834,61 @@ else:
     st.info("ℹ️ File không có cột 'Tên đối tượng' nên không lập được danh sách cell.")
 
 st.markdown("### 📄 Báo Cáo Cấp Trên")
-summary_data = {
-    "cssr": s_cssr.mean(),
-    "drop": s_cdr.mean(),
-    "dl": s_dl.mean(),
-    "ul": s_ul.mean(),
-    "cqi": s_cqi.mean(),
-    "prb": s_prb.mean(),
-    "intra": s_intra.mean(),
-    "irat": s_irat.mean(),
-    "srvcc": s_srvcc.mean(),
-}
 
-pdf_buf = generate_pdf_report(summary_data, res_df)
 
-st.download_button(
-    label="📑 Xuất Báo Cáo PDF",
-    data=pdf_buf,
-    file_name="Bao_Cao_Toi_Uu_Mang_4G.pdf",
-    mime="application/pdf",
+def build_pdf_charts():
+    """Dữ liệu biểu đồ (trung bình theo giờ) cho từng KPI + Total Traffic."""
+    hourly_traffic = filtered_df.groupby("Hour")[TRAFFIC_COL].sum()
+    items = [
+        {
+            "title": "Total Traffic (GB)",
+            "x": list(hourly_traffic.index),
+            "traffic": list(hourly_traffic.values),
+        }
+    ]
+    for label, col in avail_kpis.items():
+        h = (
+            filtered_df.groupby("Hour")
+            .agg({TRAFFIC_COL: "sum", col: kpi_agg(label)})
+            .reset_index()
+        )
+        items.append(
+            {
+                "title": f"Traffic vs {label}",
+                "x": list(h["Hour"]),
+                "traffic": list(h[TRAFFIC_COL]),
+                "kpi": list(h[col]),
+                "label": label,
+            }
+        )
+    return items
+
+
+info_line = (
+    f"Records: {len(filtered_df):,} | Sites: {num_sites} | Cells: {num_cells} | "
+    f"Ngày: {len(sel_dates)}"
 )
+pdf_sig = repr(
+    (
+        sorted(map(str, sel_dates)),
+        sorted(map(str, sel_sites)),
+        kpi_opt,
+        top_n,
+    )
+)
+
+if st.button("🧾 Tạo báo cáo PDF (đủ card + biểu đồ)"):
+    with st.spinner("Đang tạo báo cáo PDF..."):
+        pdf_buf = generate_pdf_report(cards, build_pdf_charts(), res_df, info_line)
+        st.session_state["pdf_bytes"] = pdf_buf.getvalue()
+        st.session_state["pdf_sig"] = pdf_sig
+
+if st.session_state.get("pdf_sig") == pdf_sig:
+    st.download_button(
+        label="📑 Tải Báo Cáo PDF",
+        data=st.session_state["pdf_bytes"],
+        file_name="Bao_Cao_Toi_Uu_Mang_4G.pdf",
+        mime="application/pdf",
+    )
+elif "pdf_sig" in st.session_state:
+    st.caption("Bộ lọc đã thay đổi — bấm 'Tạo báo cáo PDF' để cập nhật.")
