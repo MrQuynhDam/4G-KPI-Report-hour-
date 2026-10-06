@@ -2,231 +2,255 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import os
 
-# 1. CẤU HÌNH TRANG STREAMLIT
+# -----------------------------------------------------------------------------
+# 1. PAGE CONFIGURATION & CUSTOM STYLING
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Báo Cáo Tình Trạng & Tối Ưu Mạng 4G LTE",
-    page_icon="📡",
+    page_title="4G/LTE RAN Health & Optimization Dashboard",
+    page_icon="📶",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 2. CHUẨN HÓA DỮ LIỆU
+# Custom CSS for Telecom Dark Theme
+st.markdown("""
+
+""", unsafe_allow_html=True)
+
+
+# -----------------------------------------------------------------------------
+# 2. DATA LOADING & DYNAMIC PREPROCESSING
+# -----------------------------------------------------------------------------
 @st.cache_data
-def load_data(file_path_or_buffer):
-    df = pd.read_csv(file_path_or_buffer)
-    df['Thời gian'] = pd.to_datetime(df['Thời gian'], errors='coerce')
-    df['Ngày'] = df['Thời gian'].dt.date
+def process_data(file_input):
+    df = pd.read_csv(file_input)
     
-    if 'Giờ' in df.columns:
-        df['Giờ'] = pd.to_numeric(df['Giờ'], errors='coerce').fillna(df['Thời gian'].dt.hour).fillna(0).astype(int)
+    # 1. Tự động nhận diện cột Thời Gian
+    time_col = None
+    for candidate in ['Thời gian', 'Time', 'DateTime', 'Date_Time', 'timestamp']:
+        if candidate in df.columns:
+            time_col = candidate
+            break
+            
+    if time_col:
+        df['DateTime'] = pd.to_datetime(df[time_col], dayfirst=True, errors='coerce')
+        df['Date'] = df['DateTime'].dt.date
     else:
-        df['Giờ'] = df['Thời gian'].dt.hour.fillna(0).astype(int)
+        st.error("❌ Không tìm thấy cột Thời gian trong file CSV!")
+        st.stop()
+
+    # 2. Tự động nhận diện cột Giờ (Hour)
+    hour_col = None
+    for candidate in ['Giờ', 'Hour', 'hour']:
+        if candidate in df.columns:
+            hour_col = candidate
+            break
     
+    if hour_col:
+        df['Hour'] = pd.to_numeric(df[hour_col], errors='coerce').fillna(0).astype(int)
+    else:
+        df['Hour'] = df['DateTime'].dt.hour
+
+    # 3. Tự động ép kiểu số cho các chỉ số KPI
     numeric_cols = [
-        'User Uplink Average Throughput (Kbps)',
         'User Downlink Average Throughput (Kbps)',
-        'CQI_4G', 'Call Setup Success Rate',
-        'Inter-RAT HOSR (LTE to WCDMA) (%)',
-        'Inter-frequency HO (%)', 'Intra-frequency HO (%)',
+        'User Uplink Average Throughput (Kbps)',
+        'CQI_4G',
+        'Call Setup Success Rate',
+        'Service Drop (all service)',
         'Resource Block Untilizing Rate Downlink (%)',
-        'Service Drop (all service)', 'Total Data Traffic Volume (GB)',
-        'Traffic Volumn DL (GB)', 'Traffic Volume UL (GB)',
-        'Call Drop Rate (VoLTE)', 'Inter-frequency HO Success Rates (VoLTE)',
-        'Intra-frequency HO Success Rates (VoLTE)',
-        'VoLTE E-RAB Call Setup Success Rate', 'VoLTE Traffic (Erl)'
+        'Total Data Traffic Volume (GB)',
+        'Traffic Volumn DL (GB)',
+        'Traffic Volume UL (GB)',
+        'Intra-frequency HO (%)',
+        'Inter-frequency HO (%)',
+        'Call Drop Rate (VoLTE)',
+        'VoLTE E-RAB Call Setup Success Rate',
+        'VoLTE Traffic (Erl)'
     ]
     
     for col in numeric_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        else:
-            df[col] = 0.0
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    df['_Weighted_DL_THP'] = df['User Downlink Average Throughput (Kbps)'] * df['Traffic Volumn DL (GB)']
-    df['_Weighted_UL_THP'] = df['User Uplink Average Throughput (Kbps)'] * df['Traffic Volume UL (GB)']
-    df['_Weighted_PRB_DL'] = df['Resource Block Untilizing Rate Downlink (%)'] * df['Traffic Volumn DL (GB)']
-    df['_Weighted_CQI'] = df['CQI_4G'] * df['Total Data Traffic Volume (GB)']
+    # Tính toán thêm tốc độ Mbps
+    if 'User Downlink Average Throughput (Kbps)' in df.columns:
+        df['DL_Throughput_Mbps'] = df['User Downlink Average Throughput (Kbps)'] / 1000.0
+    if 'User Uplink Average Throughput (Kbps)' in df.columns:
+        df['UL_Throughput_Mbps'] = df['User Uplink Average Throughput (Kbps)'] / 1000.0
 
     return df
-# 3. SIDEBAR & BỘ LỌC
-st.sidebar.title("📡 Cấu Hình & Bộ Lọc")
-uploaded_file = st.sidebar.file_uploader("Tải lên file KPI (CSV)", type=["csv"])
 
+# -----------------------------------------------------------------------------
+# 3. SIDEBAR CONTROLS & DYNAMIC UPLOAD
+# -----------------------------------------------------------------------------
+st.sidebar.image("https://img.icons8.com/color/96/antenna.png", width=70)
+st.sidebar.title("📶 Dynamic Data Input")
+
+uploaded_file = st.sidebar.file_uploader(
+    "📂 Tải lên file CSV Kpis (4G/LTE):", 
+    type=['csv'],
+    help="Tải file CSV chứa KPI theo giờ của trạm/cell"
+)
+
+# Xử lý nguồn dữ liệu
+df = None
 if uploaded_file is not None:
-    df = load_data(uploaded_file)
+    st.sidebar.success("✅ Đã tải file người dùng!")
+    df = process_data(uploaded_file)
+elif os.path.exists("4G.csv"):
+    st.sidebar.info("ℹ️ Đang dùng dữ liệu mẫu (4G.csv)")
+    df = process_data("4G.csv")
 else:
-    try:
-        df = load_data("4GKPI.csv")
-    except Exception:
-        st.error("Vui lòng tải file `4GKPI.csv` lên ứng dụng để tiếp tục.")
-        st.stop()
-
-all_dates = sorted([d for d in df['Ngày'].dropna().unique()])
-selected_dates = st.sidebar.multiselect("Chọn Ngày", options=all_dates, default=all_dates)
-
-all_hours = sorted([int(h) for h in df['Giờ'].dropna().unique()])
-selected_hours = st.sidebar.multiselect("Chọn Giờ (0 - 23)", options=all_hours, default=all_hours)
-
-all_provinces = sorted(df['Tỉnh/Tp'].dropna().unique()) if 'Tỉnh/Tp' in df.columns else []
-selected_provinces = st.sidebar.multiselect("Tỉnh / TP", options=all_provinces, default=all_provinces)
-
-df_prov = df[df['Tỉnh/Tp'].isin(selected_provinces)] if 'Tỉnh/Tp' in df.columns else df
-all_wards = sorted(df_prov['Phường/xã'].dropna().unique()) if 'Phường/xã' in df.columns else []
-selected_wards = st.sidebar.multiselect("Phường / Xã", options=all_wards, default=all_wards)
-
-df_ward = df_prov[df_prov['Phường/xã'].isin(selected_wards)] if 'Phường/xã' in df.columns else df_prov
-all_sites = sorted(df_ward['Site Name'].dropna().unique()) if 'Site Name' in df.columns else []
-selected_sites = st.sidebar.multiselect("Site Name", options=all_sites, default=[])
-
-filtered_df = df[(df['Ngày'].isin(selected_dates)) & (df['Giờ'].isin(selected_hours))]
-
-if 'Tỉnh/Tp' in df.columns and selected_provinces:
-    filtered_df = filtered_df[filtered_df['Tỉnh/Tp'].isin(selected_provinces)]
-if 'Phường/xã' in df.columns and selected_wards:
-    filtered_df = filtered_df[filtered_df['Phường/xã'].isin(selected_wards)]
-if 'Site Name' in df.columns and selected_sites:
-    filtered_df = filtered_df[filtered_df['Site Name'].isin(selected_sites)]
-
-if filtered_df.empty:
-    st.warning("Không có dữ liệu phù hợp với bộ lọc hiện tại.")
+    st.info("👋 **Chào mừng bạn!** Vui lòng **tải lên file CSV KPI 4G** ở thanh bên trái để bắt đầu phân tích.")
     st.stop()
 
-# 4. TÍNH KPI CHUẨN
-def calculate_kpis(data):
-    total_traffic = data['Total Data Traffic Volume (GB)'].sum()
-    dl_traffic = data['Traffic Volumn DL (GB)'].sum()
-    ul_traffic = data['Traffic Volume UL (GB)'].sum()
-    
-    avg_dl_thp = data['_Weighted_DL_THP'].sum() / (dl_traffic if dl_traffic > 0 else 1)
-    avg_ul_thp = data['_Weighted_UL_THP'].sum() / (ul_traffic if ul_traffic > 0 else 1)
-    avg_prb_dl = data['_Weighted_PRB_DL'].sum() / (dl_traffic if dl_traffic > 0 else 1)
-    avg_cqi = data['_Weighted_CQI'].sum() / (total_traffic if total_traffic > 0 else 1)
-    avg_cssr = data['Call Setup Success Rate'].mean()
-    
-    return {
-        'total_traffic': total_traffic, 'dl_traffic': dl_traffic, 'ul_traffic': ul_traffic,
-        'avg_dl_thp': avg_dl_thp, 'avg_ul_thp': avg_ul_thp,
-        'avg_prb_dl': avg_prb_dl, 'avg_cqi': avg_cqi, 'avg_cssr': avg_cssr
-    }
+# Dynamic Filters based on Uploaded File
+st.sidebar.subheader("🎯 Bộ lọc Dữ liệu (Filters)")
 
-kpis = calculate_kpis(filtered_df)
+# Filter Date
+all_dates = sorted(df['Date'].dropna().unique())
+selected_dates = st.sidebar.multiselect("📅 Chọn Ngày", options=all_dates, default=all_dates)
 
-# 5. GIAO DIỆN CHÍNH
-st.title("📡 BÁO CÁO TÌNH TRẠNG & TỐI ƯU MẠNG 4G LTE")
+# Filter Site (Tự động nhận diện cột Site Name)
+site_col = 'Site Name' if 'Site Name' in df.columns else ('Site' if 'Site' in df.columns else None)
+if site_col:
+    all_sites = sorted(df[site_col].dropna().unique())
+    selected_sites = st.sidebar.multiselect("📡 Chọn Site", options=all_sites, default=all_sites)
+    filtered_df = df[(df['Date'].isin(selected_dates)) & (df[site_col].isin(selected_sites))]
+else:
+    filtered_df = df[df['Date'].isin(selected_dates)]
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("TỔNG TRAFFIC (GB)", f"{kpis['total_traffic']:,.2f} GB", f"DL: {kpis['dl_traffic']:,.1f} | UL: {kpis['ul_traffic']:,.1f}")
-col2.metric("DL / UL THROUGHPUT", f"{kpis['avg_dl_thp']:,.0f} / {kpis['avg_ul_thp']:,.0f} Kbps")
-col3.metric("CALL SETUP SUCCESS (CSSR)", f"{kpis['avg_cssr']:.2f}%", delta="Mục tiêu ≥ 98%")
-col4.metric("PRB UTIL DL & CQI", f"{kpis['avg_prb_dl']:.1f}% / {kpis['avg_cqi']:.1f}%")
-# 6. TAB NAVIGATION
-tab1, tab2, tab3 = st.tabs([
-    "📈 Phân Tích Biến Động (Daily & Hourly)",
-    "⚠️ Phân Tích Cell / KPI Kém",
-    "🛠 Khuyến Nghị Troubleshoot"
-])
+if filtered_df.empty:
+    st.warning("⚠️ Không tìm thấy dữ liệu khớp với bộ lọc!")
+    st.stop()
 
-# TAB 1: BIỂU ĐỒ BIẾN ĐỘNG
+# -----------------------------------------------------------------------------
+# 4. HEADER & DASHBOARD METRIC CARDS
+# -----------------------------------------------------------------------------
+cell_col = 'Tên đối tượng' if 'Tên đối tượng' in df.columns else ('Cell' if 'Cell' in df.columns else None)
+num_cells = filtered_df[cell_col].nunique() if cell_col else 0
+num_sites = filtered_df[site_col].nunique() if site_col else 0
+
+st.title("📡 4G/LTE Network Health & Optimization Dashboard")
+st.markdown(f"**Tổng số bản ghi:** `{len(filtered_df):,}` | **Sites:** `{num_sites}` | **Cells:** `{num_cells}`")
+
+st.markdown("---")
+
+# Metrics Display
+col1, col2, col3, col4, col5 = st.columns(5)
+
+total_traffic = filtered_df['Total Data Traffic Volume (GB)'].sum() if 'Total Data Traffic Volume (GB)' in filtered_df else 0
+avg_dl_thrp = filtered_df['DL_Throughput_Mbps'].mean() if 'DL_Throughput_Mbps' in filtered_df else 0
+avg_cssr = filtered_df['Call Setup Success Rate'].mean() if 'Call Setup Success Rate' in filtered_df else 0
+avg_drop = filtered_df['Service Drop (all service)'].mean() if 'Service Drop (all service)' in filtered_df else 0
+avg_volte_drop = filtered_df['Call Drop Rate (VoLTE)'].mean() if 'Call Drop Rate (VoLTE)' in filtered_df else 0
+
+with col1:
+    st.metric("📊 Total Traffic", f"{total_traffic:,.1f} GB")
+with col2:
+    st.metric("🚀 Avg DL Throughput", f"{avg_dl_thrp:.2f} Mbps")
+with col3:
+    st.metric("📞 Call Setup SR", f"{avg_cssr:.2f}%")
+with col4:
+    st.metric("🔴 Service Drop Rate", f"{avg_drop:.3f}%")
+with col5:
+    st.metric("📱 VoLTE Drop Rate", f"{avg_volte_drop:.3f}%")
+
+st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# 5. HOURLY TREND CHARTS
+# -----------------------------------------------------------------------------
+st.subheader("📈 Xu hướng KPI Theo Giờ Qua Các Ngày (Hourly Trend)")
+
+hourly_df = filtered_df.groupby(['Date', 'Hour']).agg({
+    col: 'mean' for col in [
+        'DL_Throughput_Mbps', 'UL_Throughput_Mbps', 
+        'Resource Block Untilizing Rate Downlink (%)', 'Call Setup Success Rate', 
+        'Service Drop (all service)', 'CQI_4G', 'Intra-frequency HO (%)', 
+        'Call Drop Rate (VoLTE)', 'VoLTE E-RAB Call Setup Success Rate'
+    ] if col in filtered_df.columns
+}).reset_index()
+
+hourly_df['Date_Str'] = hourly_df['Date'].astype(str)
+
+tab1, tab2, tab3 = st.tabs(["🚀 Throughput & PRB", "☎️ CDR & CSSR", "📶 Quality & VoLTE"])
+
 with tab1:
-    st.subheader("1. Biến Động Mức Ngày (Daily Trend)")
-    daily_grouped = filtered_df.groupby('Ngày').agg({
-        'Total Data Traffic Volume (GB)': 'sum',
-        'Traffic Volumn DL (GB)': 'sum',
-        '_Weighted_DL_THP': 'sum'
-    }).reset_index()
+    c1, c2 = st.columns(2)
+    if 'DL_Throughput_Mbps' in hourly_df:
+        with c1:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='DL_Throughput_Mbps', color='Date_Str', title='DL Throughput (Mbps)', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
+    if 'Resource Block Untilizing Rate Downlink (%)' in hourly_df:
+        with c2:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='Resource Block Untilizing Rate Downlink (%)', color='Date_Str', title='PRB DL Utilization (%)', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
 
-    daily_grouped['DL Throughput (Kbps)'] = daily_grouped['_Weighted_DL_THP'] / daily_grouped['Traffic Volumn DL (GB)'].replace(0, 1)
-
-    fig_daily = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_daily.add_trace(go.Bar(x=daily_grouped['Ngày'], y=daily_grouped['Total Data Traffic Volume (GB)'], name="Total Traffic (GB)"), secondary_y=False)
-    fig_daily.add_trace(go.Scatter(x=daily_grouped['Ngày'], y=daily_grouped['DL Throughput (Kbps)'], name="DL Throughput (Kbps)", mode='lines+markers'), secondary_y=True)
-    fig_daily.update_layout(hovermode="x unified")
-    st.plotly_chart(fig_daily, use_container_width=True)
-    
-    st.subheader("2. Biến Động Mức Giờ (Hourly Profile)")
-    hourly_grouped = filtered_df.groupby('Giờ').agg({
-        'Total Data Traffic Volume (GB)': 'sum',
-        'Traffic Volumn DL (GB)': 'sum',
-        '_Weighted_PRB_DL': 'sum',
-        'Intra-frequency HO (%)': 'mean',
-        'Inter-frequency HO (%)': 'mean'
-    }).reset_index()
-
-    hourly_grouped['PRB Util DL (%)'] = hourly_grouped['_Weighted_PRB_DL'] / hourly_grouped['Traffic Volumn DL (GB)'].replace(0, 1)
-    
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        fig_h = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_h.add_trace(go.Bar(x=hourly_grouped['Giờ'], y=hourly_grouped['Total Data Traffic Volume (GB)'], name="Traffic (GB)"), secondary_y=False)
-        fig_h.add_trace(go.Scatter(x=hourly_grouped['Giờ'], y=hourly_grouped['PRB Util DL (%)'], name="PRB Util DL (%)"), secondary_y=True)
-        st.plotly_chart(fig_h, use_container_width=True)
-    with col_h2:
-        fig_ho = go.Figure()
-        fig_ho.add_trace(go.Scatter(x=hourly_grouped['Giờ'], y=hourly_grouped['Intra-frequency HO (%)'], name="Intra-freq HO (%)"))
-        fig_ho.add_trace(go.Scatter(x=hourly_grouped['Giờ'], y=hourly_grouped['Inter-frequency HO (%)'], name="Inter-freq HO (%)"))
-        st.plotly_chart(fig_ho, use_container_width=True)
-
-# TAB 2: LỌC CELL KÉM
 with tab2:
-    st.subheader("Danh Sách Cell Kém Theo Ngưỡng Quy Chuẩn")
-    col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-    thp_threshold = col_t1.number_input("DL Throughput < (Kbps)", value=10000, step=1000)
-    prb_threshold = col_t2.number_input("PRB Util DL > (%)", value=70.0, step=5.0)
-    cqi_threshold = col_t3.number_input("CQI_4G < (%)", value=90.0, step=5.0)
-    drop_threshold = col_t4.number_input("Service Drops > (Lượt)", value=10, step=5)
-        
-    group_cols = [c for c in ['Mã đối tượng', 'Tên đối tượng', 'Site Name', 'Phường/xã'] if c in filtered_df.columns]
-    
-    if group_cols:
-        cell_agg = filtered_df.groupby(group_cols).agg({
-            'Total Data Traffic Volume (GB)': 'sum',
-            'Traffic Volumn DL (GB)': 'sum',
-            'Traffic Volume UL (GB)': 'sum',
-            '_Weighted_DL_THP': 'sum',
-            '_Weighted_UL_THP': 'sum',
-            '_Weighted_PRB_DL': 'sum',
-            '_Weighted_CQI': 'sum',
-            'Call Setup Success Rate': 'mean',
-            'Service Drop (all service)': 'sum'
-        }).reset_index()
+    c1, c2 = st.columns(2)
+    if 'Service Drop (all service)' in hourly_df:
+        with c1:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='Service Drop (all service)', color='Date_Str', title='Service Drop Rate (%)', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
+    if 'Call Setup Success Rate' in hourly_df:
+        with c2:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='Call Setup Success Rate', color='Date_Str', title='CSSR (%)', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
 
-        cell_agg['Avg DL Throughput (Kbps)'] = cell_agg['_Weighted_DL_THP'] / cell_agg['Traffic Volumn DL (GB)'].replace(0, 1)
-        cell_agg['Avg PRB Util DL (%)'] = cell_agg['_Weighted_PRB_DL'] / cell_agg['Traffic Volumn DL (GB)'].replace(0, 1)
-        cell_agg['Avg CQI (%)'] = cell_agg['_Weighted_CQI'] / cell_agg['Total Data Traffic Volume (GB)'].replace(0, 1)
-
-        bad_cells = cell_agg[
-            (cell_agg['Avg DL Throughput (Kbps)'] < thp_threshold) |
-            (cell_agg['Avg PRB Util DL (%)'] > prb_threshold) |
-            (cell_agg['Avg CQI (%)'] < cqi_threshold) |
-            (cell_agg['Service Drop (all service)'] > drop_threshold)
-        ].sort_values(by='Avg DL Throughput (Kbps)', ascending=True)
-        
-        st.write(f"**Tổng số Cell bị cảnh báo kém:** {len(bad_cells)} / {len(cell_agg)} Cells")
-        st.dataframe(bad_cells, use_container_width=True)
-
-# TAB 3: TROUBLESHOOTING
 with tab3:
-    st.subheader("Chẩn Đoán Tự Động & Đề Xuất Tối Ưu")
-    if 'bad_cells' not in locals() or bad_cells.empty:
-        st.success("Không có Cell nào bị vi phạm ngưỡng KPI kém.")
+    c1, c2 = st.columns(2)
+    if 'CQI_4G' in hourly_df:
+        with c1:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='CQI_4G', color='Date_Str', title='CQI 4G Index', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
+    if 'Call Drop Rate (VoLTE)' in hourly_df:
+        with c2:
+            st.plotly_chart(px.line(hourly_df, x='Hour', y='Call Drop Rate (VoLTE)', color='Date_Str', title='VoLTE Drop Rate (%)', markers=True).update_layout(template='plotly_dark'), use_container_width=True)
+
+st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# 6. WORST CELLS LIST FOR SELECTED KPI
+# -----------------------------------------------------------------------------
+st.subheader("⚠️ Danh Sách Worst Cells Theo Từng Chỉ Số KPI")
+
+if cell_col:
+    kpi_option = st.selectbox(
+        "🎯 Chọn KPI muốn truy xuất danh sách Worst Cells:",
+        [
+            "Service Drop Rate (CDR)", 
+            "Low Downlink Throughput", 
+            "High PRB Congestion", 
+            "VoLTE Call Drop Rate", 
+            "Low CQI (Poor RF)"
+        ]
+    )
+
+    top_n = st.slider("Số lượng Cells hiển thị:", min_value=5, max_value=30, value=10)
+
+    # Aggregate by Cell
+    cell_agg = filtered_df.groupby([site_col, cell_col]).agg({
+        col: 'mean' for col in [
+            'Service Drop (all service)', 'DL_Throughput_Mbps', 
+            'Resource Block Untilizing Rate Downlink (%)', 'Call Drop Rate (VoLTE)', 
+            'CQI_4G', 'Total Data Traffic Volume (GB)'
+        ] if col in filtered_df.columns
+    }).reset_index()
+
+    if kpi_option == "Service Drop Rate (CDR)" and 'Service Drop (all service)' in cell_agg:
+        res_df = cell_agg.sort_values(by='Service Drop (all service)', ascending=False).head(top_n)
+    elif kpi_option == "Low Downlink Throughput" and 'DL_Throughput_Mbps' in cell_agg:
+        res_df = cell_agg.sort_values(by='DL_Throughput_Mbps', ascending=True).head(top_n)
+    elif kpi_option == "High PRB Congestion" and 'Resource Block Untilizing Rate Downlink (%)' in cell_agg:
+        res_df = cell_agg.sort_values(by='Resource Block Untilizing Rate Downlink (%)', ascending=False).head(top_n)
+    elif kpi_option == "VoLTE Call Drop Rate" and 'Call Drop Rate (VoLTE)' in cell_agg:
+        res_df = cell_agg.sort_values(by='Call Drop Rate (VoLTE)', ascending=False).head(top_n)
+    elif kpi_option == "Low CQI (Poor RF)" and 'CQI_4G' in cell_agg:
+        res_df = cell_agg.sort_values(by='CQI_4G', ascending=True).head(top_n)
     else:
-        for _, row in bad_cells.iterrows():
-            issues, actions = [], []
-            if row['Avg PRB Util DL (%)'] > prb_threshold and row['Avg DL Throughput (Kbps)'] < thp_threshold:
-                issues.append("Nghẽn vô tuyến")
-                actions.append("• Mở rộng băng thông / MLB / Điều chỉnh Anten chia tải.")
-            if row['Avg CQI (%)'] < cqi_threshold:
-                issues.append("CQI kém / Nhiễu cao")
-                actions.append("• Kiểm tra Tilt/Azimuth anten, quét nhiễu PIM / PCI collision.")
-            if row['Service Drop (all service)'] > drop_threshold:
-                issues.append("Rớt dịch vụ cao")
-                actions.append("• Kiểm tra hardware log eNodeB, truyền dẫn S1 và Missing Neighbor.")
-                
-            cell_name = row.get('Tên đối tượng', 'N/A')
-            site_name = row.get('Site Name', 'N/A')
-            with st.expander(f"🔴 Cell: {cell_name} (Site: {site_name}) — {' | '.join(issues)}"):
-                st.write(f"**DL Throughput:** {row['Avg DL Throughput (Kbps)']:,.0f} Kbps | **PRB Util:** {row['Avg PRB Util DL (%)']:.1f}% | **CQI:** {row['Avg CQI (%)']:.1f}%")
-                st.info("\n".join(actions))
+        res_df = cell_agg.head(top_n)
+
+    st.dataframe(res_df, use_container_width=True)
+else:
+    st.info("Cột tên Cell không tồn tại trong dữ liệu đã upload.")
+
+st.caption("🚀 Universal 4G/LTE RAN Dashboard — Build with Streamlit & Python")
