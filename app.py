@@ -637,19 +637,40 @@ else:
 
 # Filters
 st.sidebar.subheader("📅 Chọn Ngày")
-all_dates = sorted(df["Date"].dropna().unique())
-
-sel_dates = []
-chk_all_d = st.sidebar.checkbox("Tất cả Ngày", value=True)
-if chk_all_d:
-    sel_dates = all_dates
+if "Date" in df.columns:
+    all_dates = sorted(df["Date"].dropna().unique().tolist())
+    
+    # Sử dụng multiselect cho phần chọn ngày
+    sel_dates = st.sidebar.multiselect(
+        "Chọn Ngày",
+        options=all_dates,
+        default=all_dates,  # Mặc định chọn tất cả
+        label_visibility="collapsed"
+    )
 else:
-    for d in all_dates:
-        if st.sidebar.checkbox(str(d), value=True, key=f"d_{d}"):
-            sel_dates.append(d)
+    sel_dates = []
 
 st.sidebar.subheader("📡 Chọn Site")
 site_col = "Site Name" if "Site Name" in df.columns else None
+
+sel_sites = []
+if site_col:
+    all_sites = sorted(df[site_col].dropna().unique().tolist())
+    
+    sel_sites = st.sidebar.multiselect(
+        "Chọn Site",
+        options=all_sites,
+        default=all_sites,  # Mặc định chọn tất cả
+        label_visibility="collapsed"
+    )
+    
+    filtered_df = df[(df["Date"].isin(sel_dates)) & (df[site_col].isin(sel_sites))]
+else:
+    filtered_df = df[df["Date"].isin(sel_dates)] if "Date" in df.columns else df
+
+if filtered_df.empty:
+    st.warning("⚠️ Không tìm thấy dữ liệu!")
+    st.stop()
 
 sel_sites = []
 if site_col:
