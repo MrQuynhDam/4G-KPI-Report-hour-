@@ -722,7 +722,7 @@ cell_col = "Tên đối tượng" if "Tên đối tượng" in df.columns else N
 num_cells = filtered_df[cell_col].nunique() if cell_col else 0
 num_sites = filtered_df[site_col].nunique() if site_col else 0
 
-st.title("📡 4G/LTE RAN Report")
+st.title("📡 4G RAN Report")
 st.markdown(f"**Records:** `{len(filtered_df):,}` | **Sites:** `{num_sites}` | **Cells:** `{num_cells}`")
 st.markdown("---")
 
