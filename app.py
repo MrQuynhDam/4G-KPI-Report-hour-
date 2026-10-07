@@ -657,25 +657,6 @@ sel_sites = []
 if site_col:
     all_sites = sorted(df[site_col].dropna().unique().tolist())
     
-    sel_sites = st.sidebar.multiselect(
-        "Chọn Site",
-        options=all_sites,
-        default=all_sites,  # Mặc định chọn tất cả
-        label_visibility="collapsed"
-    )
-    
-    filtered_df = df[(df["Date"].isin(sel_dates)) & (df[site_col].isin(sel_sites))]
-else:
-    filtered_df = df[df["Date"].isin(sel_dates)] if "Date" in df.columns else df
-
-if filtered_df.empty:
-    st.warning("⚠️ Không tìm thấy dữ liệu!")
-    st.stop()
-
-sel_sites = []
-if site_col:
-    all_sites = sorted(df[site_col].dropna().unique().tolist())
-    
     # Sử dụng multiselect thay vì vòng lặp checkbox
     sel_sites = st.sidebar.multiselect(
         "Chọn Site",
