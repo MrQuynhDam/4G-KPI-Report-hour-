@@ -305,12 +305,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             plt.close()
             img_b.seek(0)
             return Image(img_b, width=740, height=240)
-
-        # Chart 0: User DL Throughput & Data Traffic
-        c0_img = make_single_chart("Chart 0: User DL Throughput (Mbps) & Data Traffic (GB)", tf_vals, dl_vals, "User DL Throughput (Mbps)", "#10b981")
-        story.append(c0_img)
-        story.append(Spacer(1, 8))
-        
+              
         # Chart 1: CSSR & Data Traffic
         c1_img = make_single_chart("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", tf_vals, cssr_vals, "CSSR (%)", "#10b981")
         story.append(c1_img)
