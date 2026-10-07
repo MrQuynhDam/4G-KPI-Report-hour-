@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+import matplotlib.pyplot as plt
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -17,6 +19,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     PageBreak,
+    Image,
 )
 
 # ---------------------------------------------------------
@@ -63,7 +66,7 @@ st.markdown(
 
 
 # ---------------------------------------------------------
-# 2. XUẤT BÁO CÁO PDF ĐẦY ĐỦ CÁC MỤC THEO YÊU CẦU
+# 2. XUẤT BÁO CÁO PDF ĐẦY ĐỦ CARDS, CHARTS, TOP 10 & WORST 10
 # ---------------------------------------------------------
 @st.cache_data
 def get_sample_csv():
@@ -100,7 +103,7 @@ def get_sample_csv():
 
 
 def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_ho):
-    """Xuat PDF đầy đủ Card KPI, Chart/Xu hướng theo Giờ/Ngày, Top 10 Site/Cell Traffic & Worst 10 CSSR/DCR/Handover"""
+    """Xuat PDF đầy đủ Card KPI визуальный, Biểu đồ Chart hình ảnh, Top 10 Site/Cell & Worst 10 CSSR/DCR/Handover"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -113,72 +116,114 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph(f"Thời gian xuất báo cáo: {now_str} | Trung tâm Tối ưu hóa Mạng RAN", styles["Normal"]))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#3b82f6"), spaceAfter=10))
 
-    # 1. ĐẦY ĐỦ CARDS KPI TỔNG QUAN
-    story.append(Paragraph("<b>I. ĐẦY ĐỦ CARD KPI TỔNG QUAN (EXECUTIVE KPI CARDS)</b>", styles["Heading2"]))
-    story.append(Spacer(1, 4))
+    # ---------------------------------------------------------
+    # MỤC I. 10 KPI CARDS VẼ THÀNH KHUNG WIDGETS
+    # ---------------------------------------------------------
+    story.append(Paragraph("<b>I. BẢNG CARD KPI TỔNG QUAN (VISUAL KPI CARDS)</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
 
-    kpi_data = [
-        ["Phân nhóm KPI", "Chỉ số KPI (Metric)", "Giá trị Trung bình", "Chỉ tiêu Benchmark", "Đánh giá"],
-        ["Data Traffic", "Total Data Traffic Volume", f"{summary.get('tf',0):,.1f} GB", "N/A", "Tải tốt"],
-        ["Accessibility", "Call Setup Success Rate (CSSR)", f"{summary.get('cssr',0):.2f}%", ">= 99.50%", "Tốt"],
-        ["Retainability", "Service Drop Rate (DCR/CDR)", f"{summary.get('drop',0):.3f}%", "<= 0.100%", "Ổn định"],
-        ["Integrity", "User Downlink Throughput", f"{summary.get('dl',0):.2f} Mbps", ">= 15.0 Mbps", "Đạt chuẩn"],
-        ["Integrity", "User Uplink Throughput", f"{summary.get('ul',0):.2f} Mbps", ">= 1.5 Mbps", "Đạt chuẩn"],
-        ["Radio Quality", "CQI 4G Index (CQI >= 7)", f"{summary.get('cqi',0):.2f}%", ">= 92.00%", "Tốt"],
-        ["Capacity & Load", "PRB Utilization DL", f"{summary.get('prb',0):.2f}%", "<= 35.00%", "Dồi dào"],
-        ["Mobility", "Intra-frequency HO SR", f"{summary.get('intra',0):.2f}%", ">= 99.00%", "Mượt"],
-        ["Mobility", "Inter-RAT HOSR (LTE to 3G)", f"{summary.get('irat',0):.2f}%", ">= 95.00%", "Cần theo dõi"],
-        ["Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">= 95.00%", "Đảm bảo"],
+    card_t_style = ParagraphStyle('CT', fontName='Helvetica-Bold', fontSize=7.5, textColor=colors.HexColor('#475569'), leading=9)
+    card_v_style = ParagraphStyle('CV', fontName='Helvetica-Bold', fontSize=13, textColor=colors.HexColor('#0f172a'), leading=15)
+    card_s_style = ParagraphStyle('CS', fontName='Helvetica', fontSize=6.5, textColor=colors.HexColor('#64748b'), leading=8)
+
+    def create_pdf_card(cat, title, val, target, remark, color_hex="#10b981"):
+        p_t = Paragraph(f"<b>{cat.upper()}</b><br/>{title}", card_t_style)
+        p_v = Paragraph(f"<font color='{color_hex}'><b>{val}</b></font>", card_v_style)
+        p_s = Paragraph(f"<b>Target:</b> {target}<br/><i>{remark}</i>", card_s_style)
+        
+        c_tbl = Table([[p_t], [p_v], [p_s]], colWidths=[142])
+        c_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+            ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor('#cbd5e1')),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING', (0,0), (-1,-1), 5),
+            ('RIGHTPADDING', (0,0), (-1,-1), 5),
+        ]))
+        return c_tbl
+
+    cards_row1 = [
+        create_pdf_card("Data Traffic", "Total Data Traffic", f"{summary.get('tf',0):,.0f} GB", "N/A", "Tải tốt", "#2563eb"),
+        create_pdf_card("Accessibility", "Call Setup SR", f"{summary.get('cssr',0):.2f}%", ">=99.50%", "Tốt", "#059669" if summary.get('cssr',0)>=99.5 else "#d97706"),
+        create_pdf_card("Retainability", "Service Drop Rate", f"{summary.get('drop',0):.3f}%", "<=0.100%", "Ổn định", "#059669" if summary.get('drop',0)<=0.1 else "#dc2626"),
+        create_pdf_card("Integrity", "User DL Throughput", f"{summary.get('dl',0):.2f} M", ">=15.0M", "Đạt chuẩn", "#059669" if summary.get('dl',0)>=15 else "#d97706"),
+        create_pdf_card("Integrity", "User UL Throughput", f"{summary.get('ul',0):.2f} M", ">=1.5M", "Đạt chuẩn", "#059669" if summary.get('ul',0)>=1.5 else "#d97706"),
     ]
 
-    t1 = Table(kpi_data, colWidths=[120, 180, 120, 120, 120])
-    t1.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e293b")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-        ("TOPPADDING", (0,0), (-1,-1), 4),
-        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+    cards_row2 = [
+        create_pdf_card("Radio Quality", "CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=92.00%", "Vùng phủ tốt", "#059669" if summary.get('cqi',0)>=92 else "#d97706"),
+        create_pdf_card("Capacity & Load", "PRB DL Utilization", f"{summary.get('prb',0):.2f}%", "<=35.00%", "Dồi dào", "#059669" if summary.get('prb',0)<=35 else "#dc2626"),
+        create_pdf_card("Mobility", "Intra-freq HO SR", f"{summary.get('intra',0):.2f}%", ">=99.00%", "Mượt", "#059669" if summary.get('intra',0)>=99 else "#d97706"),
+        create_pdf_card("Mobility", "Inter-RAT HOSR", f"{summary.get('irat',0):.2f}%", ">=95.00%", "Cần theo dõi", "#059669" if summary.get('irat',0)>=95 else "#d97706"),
+        create_pdf_card("Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">=95.00%", "Đảm bảo", "#059669" if summary.get('srvcc',0)>=95 else "#d97706"),
+    ]
+
+    grid_cards = Table([cards_row1, cards_row2], colWidths=[150]*5)
+    grid_cards.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 1),
+        ('RIGHTPADDING', (0,0), (-1,-1), 1),
     ]))
-    story.append(t1)
+    story.append(grid_cards)
     story.append(Spacer(1, 10))
 
-    # 2. BẢNG DỮ LIỆU XU HƯỚNG CÁC KPI MỨC GIỜ / NGÀY
-    story.append(Paragraph("<b>II. BẢNG XU HƯỚNG TẤT CẢ CÁC KPI THEO MỨC GIỜ (HOURLY KPI TRENDS)</b>", styles["Heading2"]))
+    # ---------------------------------------------------------
+    # MỤC II. BIỂU ĐỒ HÌNH ẢNH (CHARTS) XU HƯỚNG CÁC KPI MỨC GIỜ/NGÀY
+    # ---------------------------------------------------------
+    story.append(Paragraph("<b>II. BIỂU ĐỒ VÀ XU HƯỚNG CÁC KPI THEO MỨC GIỜ/NGÀY (HOURLY CHARTS & TRENDS)</b>", styles["Heading2"]))
     story.append(Spacer(1, 4))
 
     if not hourly_trend_df.empty:
-        chart_headers = ["Thời Gian", "Traffic (GB)", "DL Thrp (M)", "UL Thrp (M)", "DCR Drop (%)", "CSSR (%)", "Intra-HO (%)", "PRB DL (%)"]
-        chart_data_list = [chart_headers]
+        # Tự động vẽ Biểu đồ bằng Matplotlib và chèn vào PDF
+        img_buf = io.BytesIO()
+        fig, (ax_tr, ax_kpi) = plt.subplots(2, 1, figsize=(11, 4.2), dpi=150, sharex=True)
         
-        for _, r in hourly_trend_df.head(24).iterrows():
-            t_lbl = r.get("TimeLabel", f"{int(r.get('Hour', 0)):02d}:00")
-            chart_data_list.append([
-                str(t_lbl),
-                f"{r.get('Total Data Traffic Volume (GB)', 0):,.1f}",
-                f"{r.get('DL_Throughput_Mbps', 0):.2f}",
-                f"{r.get('UL_Throughput_Mbps', 0):.2f}",
-                f"{r.get('Service Drop (all service)', 0):.3f}",
-                f"{r.get('Call Setup Success Rate', 0):.2f}",
-                f"{r.get('Intra-frequency HO (%)', 0):.2f}",
-                f"{r.get('Resource Block Untilizing Rate Downlink (%)', 0):.2f}"
-            ])
-        t_chart = Table(chart_data_list, colWidths=[100, 75, 75, 75, 75, 75, 75, 75])
-        t_chart.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f172a")),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7),
-            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#94a3b8")),
-        ]))
-        story.append(t_chart)
-        story.append(Spacer(1, 10))
+        x_labels = [str(r.get("TimeLabel", f"{int(r.get('Hour', 0)):02d}:00")) for _, r in hourly_trend_df.head(24).iterrows()]
+        traffic_vals = hourly_trend_df.head(24).get("Total Data Traffic Volume (GB)", [0]*len(x_labels))
+        dl_vals = hourly_trend_df.head(24).get("DL_Throughput_Mbps", [0]*len(x_labels))
+        cssr_vals = hourly_trend_df.head(24).get("Call Setup Success Rate", [0]*len(x_labels))
+        drop_vals = hourly_trend_df.head(24).get("Service Drop (all service)", [0]*len(x_labels))
+
+        # Chart 1: Traffic & DL Throughput
+        ax_tr.bar(x_labels, traffic_vals, color='#3b82f6', alpha=0.65, label='Traffic (GB)')
+        ax_tr.set_ylabel("Traffic (GB)", color='#1d4ed8', fontweight='bold', fontsize=8)
+        ax_tr.tick_params(axis='y', labelcolor='#1d4ed8', labelsize=7)
+        ax_tr.grid(True, linestyle='--', alpha=0.3)
+        
+        ax_tr_twin = ax_tr.twinx()
+        ax_tr_twin.plot(x_labels, dl_vals, color='#10b981', marker='o', linewidth=2, label='DL Thrp (Mbps)')
+        ax_tr_twin.set_ylabel("DL Thrp (Mbps)", color='#047857', fontweight='bold', fontsize=8)
+        ax_tr_twin.tick_params(axis='y', labelcolor='#047857', labelsize=7)
+        ax_tr.set_title("Biểu đồ 1: Tương quan Lưu lượng Traffic (GB) và Tốc độ Tải xuống DL Throughput (Mbps)", fontsize=9, fontweight='bold', pad=4)
+
+        # Chart 2: CSSR & Drop Rate
+        ax_kpi.plot(x_labels, cssr_vals, color='#2563eb', marker='s', linewidth=1.8, label='CSSR (%)')
+        ax_kpi.set_ylabel("CSSR (%)", color='#1e40af', fontweight='bold', fontsize=8)
+        ax_kpi.tick_params(axis='y', labelcolor='#1e40af', labelsize=7)
+        ax_kpi.grid(True, linestyle='--', alpha=0.3)
+
+        ax_kpi_twin = ax_kpi.twinx()
+        ax_kpi_twin.plot(x_labels, drop_vals, color='#ef4444', marker='^', linewidth=1.8, linestyle='--', label='Drop Rate (%)')
+        ax_kpi_twin.set_ylabel("Drop Rate (%)", color='#b91c1c', fontweight='bold', fontsize=8)
+        ax_kpi_twin.tick_params(axis='y', labelcolor='#b91c1c', labelsize=7)
+        ax_kpi.set_title("Biểu đồ 2: Tỷ lệ Thiết lập Cuộc gọi CSSR (%) và Tỷ lệ Rớt Dịch vụ Drop Rate (%)", fontsize=9, fontweight='bold', pad=4)
+        
+        plt.xticks(rotation=45, ha='right', fontsize=7)
+        plt.tight_layout()
+        plt.savefig(img_buf, format='png', dpi=150)
+        plt.close()
+        img_buf.seek(0)
+
+        story.append(Image(img_buf, width=740, height=270))
+        story.append(Spacer(1, 8))
 
     story.append(PageBreak())
 
-    # 3. DANH SÁCH TOP 10 TRAFFIC SITE & CELL
+    # ---------------------------------------------------------
+    # MỤC III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
+    # ---------------------------------------------------------
     story.append(Paragraph("<b>III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL</b>", styles["Heading2"]))
     story.append(Spacer(1, 4))
 
@@ -193,16 +238,16 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             r_fmt = [f"{v:,.2f}" if isinstance(v, (float, int)) else str(v) for v in row]
             tr_data.append(r_fmt)
 
-        t_tr = Table(tr_data, colWidths=[110, 160, 100, 90, 90])
+        t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
         t_tr.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#047857")),
             ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
             ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#6ee7b7")),
         ]))
         story.append(t_tr)
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 10))
 
     if not top10_sites.empty:
         story.append(Paragraph("<b>2. Top 10 Site có Lưu lượng (Traffic Volume) cao nhất:</b>", styles["Normal"]))
@@ -215,12 +260,12 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             r_fmt = [f"{v:,.2f}" if isinstance(v, (float, int)) else str(v) for v in row]
             ts_data.append(r_fmt)
 
-        t_ts = Table(ts_data, colWidths=[170, 120, 120, 120])
+        t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
         t_ts.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f766e")),
             ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
             ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#99f6e4")),
         ]))
         story.append(t_ts)
@@ -228,7 +273,9 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
     story.append(PageBreak())
 
-    # 4. WORST 10 CHO CÁC KPI: CSSR, DCR (SERVICE DROP), VÀ HANDOVER
+    # ---------------------------------------------------------
+    # MỤC IV. WORST 10 CHO CÁC KPI: CSSR, DCR VÀ HANDOVER
+    # ---------------------------------------------------------
     story.append(Paragraph("<b>IV. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)</b>", styles["Heading2"]))
     story.append(Spacer(1, 4))
 
@@ -241,16 +288,16 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_data = [["Site Name", "Cell Name", "CSSR (%)", "Drop Rate (%)", "Traffic (GB)"]]
         for _, row in w_sub.iterrows():
             w_data.append([f"{v:.2f}" if isinstance(v, float) else str(v) for v in row])
-        t_cssr = Table(w_data, colWidths=[110, 160, 90, 90, 90])
+        t_cssr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_cssr.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#991b1b")),
             ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
             ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#fca5a5")),
         ]))
         story.append(t_cssr)
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 10))
 
     # B. Worst 10 DCR / Drop Rate
     if not worst10_dcr.empty:
@@ -261,16 +308,16 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_data = [["Site Name", "Cell Name", "Drop Rate (%)", "CSSR (%)", "Traffic (GB)"]]
         for _, row in w_sub.iterrows():
             w_data.append([f"{v:.3f}" if isinstance(v, float) else str(v) for v in row])
-        t_dcr = Table(w_data, colWidths=[110, 160, 90, 90, 90])
+        t_dcr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_dcr.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#b91c1c")),
             ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
             ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#fca5a5")),
         ]))
         story.append(t_dcr)
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 10))
 
     # C. Worst 10 Handover
     if not worst10_ho.empty:
@@ -281,12 +328,12 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_data = [["Site Name", "Cell Name", "Intra-HO (%)", "Inter-RAT HOSR (%)", "Traffic (GB)"]]
         for _, row in w_sub.iterrows():
             w_data.append([f"{v:.2f}" if isinstance(v, float) else str(v) for v in row])
-        t_ho = Table(w_data, colWidths=[110, 160, 90, 90, 90])
+        t_ho = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_ho.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#c2410c")),
             ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
             ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#ffedd5")),
         ]))
         story.append(t_ho)
@@ -698,7 +745,7 @@ if cell_col:
     )
 
     st.download_button(
-        label="📑 Tải Báo Cáo PDF Đầy Đủ (Full Cards, Hourly Trends, Top 10 Traffic & Worst 10 CSSR/DCR/HO)",
+        label="📑 Tải Báo Cáo PDF Đầy Đủ (Full Visual Cards, Charts, Top 10 Traffic & Worst 10 CSSR/DCR/HO)",
         data=pdf_buf,
         file_name="Bao_Cao_Toi_Uu_Mang_4G_Executive.pdf",
         mime="application/pdf",
