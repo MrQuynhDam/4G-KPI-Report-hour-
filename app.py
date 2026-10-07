@@ -593,10 +593,17 @@ def process_data(file_input):
 
     h_cols = ["Giờ", "Hour", "hour"]
     h_col = next((c for c in h_cols if c in df.columns), None)
+
     if h_col:
         df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
     else:
-        df["Hour"] = df["DateTime"].dt.hour
+        # Kiểm tra xem cột DateTime có thông tin Giờ thực sự không
+        has_time_info = (df["DateTime"].dt.hour != 0).any() or (df["DateTime"].dt.minute != 0).any()
+        if has_time_info:
+            df["Hour"] = df["DateTime"].dt.hour
+        else:
+            # Nếu chỉ có Ngày (Daily data), đặt Hour = -1 để đánh dấu
+            df["Hour"] = -1
 
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
     if cell_col_name:
