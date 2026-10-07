@@ -264,34 +264,39 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         volte_drop_vals = df_chart.get("Call Drop Rate (VoLTE)", pd.Series([0]*n_pts)).values
         volte_tf_vals = df_chart.get("VoLTE Traffic (Erl)", pd.Series([0]*n_pts)).values
 
+        # ---------------------------------------------------------
+        # KHỐI VẼ CHART DÙNG TRONG BÁO CÁO PDF
+        # ---------------------------------------------------------
         def make_single_chart(chart_title, bar_vals, line1_vals, line1_lbl, line1_color, 
                               line2_vals=None, line2_lbl=None, line2_color=None, 
                               bar_lbl="Traffic (GB)", is_bar_volte=False):
             img_b = io.BytesIO()
-            fig, ax = plt.subplots(figsize=(11, 2.2), dpi=150)
+            fig, ax = plt.subplots(figsize=(11, 3.568), dpi=150)
 
-            # Draw Bar
-            b_color = '#a855f7' if is_bar_volte else '#3b82f6'
-            ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
-            ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
-            ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
-            
             # X-ticks formatting
             ax.set_xticks(range(0, n_pts, step))
             ax.set_xticklabels([x_labels[i] for i in range(0, n_pts, step)], rotation=30 if n_pts > 15 else 0, ha='right' if n_pts > 15 else 'center', fontsize=6)
             ax.grid(True, linestyle='--', alpha=0.25)
 
+            # CHỈ VẼ CỘT BAR TRAFFIC NẾU BAR_VALS KHÁC NONE
+            if bar_vals is not None:
+                b_color = '#a855f7' if is_bar_volte else '#3b82f6'
+                ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
+                ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
+                ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
+
             if line2_vals is None:
-                # Dual axis chart
-                ax_t = ax.twinx()
+                # Biểu đồ 1 Line KPI + 1 Bar Traffic
+                ax_t = ax.twinx() if bar_vals is not None else ax
                 ax_t.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax_t.set_ylabel(line1_lbl, color=line1_color, fontweight='bold', fontsize=7.5)
                 ax_t.tick_params(axis='y', labelcolor=line1_color, labelsize=6.5)
             else:
-                # Two lines chart (e.g. Intra & Inter HO)
+                # Biểu đồ 2 Lines (Intra & Inter HO) - HOÀN TOÀN KHÔNG VẼ TRAFFIC
                 ax.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax.plot(range(n_pts), line2_vals, color=line2_color, marker='s', markersize=2.5, linewidth=1.4, linestyle='--', label=line2_lbl)
                 ax.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
+                ax.set_ylim(80, 100.5)
                 ax.legend(fontsize=6.5, loc='lower right')
 
             ax.set_title(chart_title, fontsize=8.5, fontweight='bold', pad=4)
@@ -299,7 +304,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             plt.savefig(img_b, format='png', dpi=150)
             plt.close()
             img_b.seek(0)
-            return Image(img_b, width=740, height=148)
+            return Image(img_b, width=740, height=240)
 
         # Chart 1: CSSR & Data Traffic
         c1_img = make_single_chart("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", tf_vals, cssr_vals, "CSSR (%)", "#10b981")
@@ -318,8 +323,8 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(c3_img)
         story.append(Spacer(1, 8))
 
-        # Chart 4: Intra HO & Inter HO
-        c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", tf_vals, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
+        # Chart 4: Chỉ so sánh Intra-freq HO (%) & Inter-freq HO (%) - TRUYỀN NONE CHO BAR_VALS
+        c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", None, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
         story.append(c4_img)
         story.append(Spacer(1, 8))
 
