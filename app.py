@@ -38,12 +38,10 @@ def setup_vietnamese_fonts():
     local_reg = "DejaVuSans.ttf"
     local_bold = "DejaVuSans-Bold.ttf"
     
-    # 1. Đọc file local nằm trong dự án (Khuyên dùng)
     if os.path.exists(local_reg):
         bold_path = local_bold if os.path.exists(local_bold) else local_reg
         return local_reg, bold_path, "DejaVu Sans"
 
-    # 2. Tìm kiếm font hệ thống (Linux / Debian / Ubuntu)
     search_dirs = [
         "/usr/share/fonts",
         "/usr/local/share/fonts",
@@ -96,13 +94,11 @@ else:
     FONT_NAME = "Helvetica"
     FONT_NAME_BOLD = "Helvetica-Bold"
 
-# Register standard fallbacks
 addMapping("Helvetica", 0, 0, "Helvetica")
 addMapping("Helvetica", 1, 0, "Helvetica-Bold")
 addMapping("Helvetica", 0, 1, "Helvetica-Oblique")
 addMapping("Helvetica", 1, 1, "Helvetica-BoldOblique")
 
-# Matplotlib Unicode Setup
 matplotlib.rcParams["font.sans-serif"] = [font_family_name, "DejaVu Sans", "Liberation Sans", "Arial"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
@@ -153,7 +149,6 @@ st.markdown(
 # 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, FREQBAND CHARTS, 6 CHARTS, TOP 10 & WORST 10
 # ---------------------------------------------------------
 def get_sample_file_bytes():
-    """Đọc trực tiếp tệp 4G_Sample.csv có sẵn trên GitHub/thư mục dự án"""
     for fname in ["4G_Sample.csv", "4G.csv"]:
         if os.path.exists(fname):
             with open(fname, "rb") as f:
@@ -162,7 +157,6 @@ def get_sample_file_bytes():
 
 
 def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None):
-    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, Freqband Charts, 6 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -213,7 +207,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         create_pdf_card("Radio Quality", "CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=95.00%", "Vùng phủ tốt", "#059669" if summary.get('cqi',0)>=95 else "#d97706"),
         create_pdf_card("Capacity & Load", "PRB DL Utilization", f"{summary.get('prb',0):.2f}%", "<=35.00%", "Dồi dào", "#059669" if summary.get('prb',0)<=35 else "#dc2626"),
         create_pdf_card("Mobility", "Intra-freq HO SR", f"{summary.get('intra',0):.2f}%", ">=98.00%", "Mượt mà", "#059669" if summary.get('intra',0)>=98 else "#d97706"),
-        create_pdf_card("Mobility", "Inter-RAT HOSR", f"{summary.get('irat',0):.2f}%", ">=95.00%", "Cần theo dõi", "#059669" if summary.get('irat',0)>=95 else "#d97706"),
+        create_pdf_card("Mobility", "Inter-freq HO SR", f"{summary.get('inter',0):.2f}%", ">=98.00%", "Ổn định", "#059669" if summary.get('inter',0)>=98 else "#d97706"),
         create_pdf_card("Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">=95.00%", "Đảm bảo", "#059669" if summary.get('srvcc',0)>=95 else "#d97706"),
     ]
 
@@ -236,7 +230,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         fb_img_buf = io.BytesIO()
         fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.8), dpi=150)
         
-        # 1. Chart Cell count & percentage
         if fb_cell_counts is not None and not fb_cell_counts.empty:
             fb_labels = fb_cell_counts["Freqband"].tolist()
             fb_sizes = fb_cell_counts["Số lượng Cell"].tolist()
@@ -254,7 +247,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 at.set_weight('bold')
             ax1_fb.set_title("Số lượng & Tỷ lệ Cell theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
         
-        # 2. Chart Traffic Volume per Freqband
         if fb_tf_df is not None and not fb_tf_df.empty:
             fb_bands = fb_tf_df["Freqband"].tolist()
             fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
@@ -264,9 +256,8 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             ax2_fb.tick_params(axis='both', labelsize=7)
             ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
             
-            # --- TĂNG KHOẢNG TRỐNG TRỤC Y (MỚI BỔ SUNG) ---
             max_tf = max(fb_traffics) if fb_traffics else 1
-            ax2_fb.set_ylim(0, max_tf * 1.18)  # Mở rộng giới hạn trên của trục Y lên 18%
+            ax2_fb.set_ylim(0, max_tf * 1.18)
             
             for bar in fb_bars:
                 yval = bar.get_height()
@@ -607,13 +598,12 @@ def process_data(file_input):
     else:
         df["Hour"] = df["DateTime"].dt.hour
 
-    # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
     if cell_col_name:
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
             if len(s) >= 11:
-                char = s[10] # Ký tự thứ 11 (index 10)
+                char = s[10]
                 return f"F{char}" if not char.startswith("F") else char
             return "N/A"
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
@@ -749,7 +739,7 @@ s_ul = filtered_df.get("UL_Throughput_Mbps", pd.Series([0]))
 s_cqi = filtered_df.get("CQI_4G", pd.Series([0]))
 s_prb = filtered_df.get("Resource Block Untilizing Rate Downlink (%)", pd.Series([0]))
 s_intra = filtered_df.get("Intra-frequency HO (%)", pd.Series([0]))
-s_irat = filtered_df.get("Inter-RAT HOSR (LTE to WCDMA) (%)", pd.Series([0]))
+s_inter_ho = filtered_df.get("Inter-frequency HO (%)", pd.Series([0]))
 s_srvcc = filtered_df.get("SRVCC Success Rate (LTE to WCDMA)", pd.Series([0]))
 
 # HÀNG 1 (5 CỘT)
@@ -782,8 +772,8 @@ with c3:
     v = s_intra.mean()
     render_card("Mobility", "Intra-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_intra.min():.1f}%", f"{s_intra.max():.1f}%", "Chuyển giao mượt", "WARNING" if v < 98.0 else "GOOD")
 with c4:
-    v = s_irat.mean()
-    render_card("Mobility", "Inter-RAT HOSR", f"{v:.2f}%", ">=95.0%", f"{s_irat.min():.1f}%", f"{s_irat.max():.1f}%", "Chỉnh Event B2", "WARNING" if v < 95.0 else "GOOD")
+    v = s_inter_ho.mean()
+    render_card("Mobility", "Inter-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_inter_ho.min():.1f}%", f"{s_inter_ho.max():.1f}%", "Chuyển giao liên tần", "WARNING" if v < 98.0 else "GOOD")
 with c5:
     v = s_srvcc.mean()
     render_card("SRVCC", "SRVCC Success Rate", f"{v:.2f}%", ">=95.0%", f"{s_srvcc.min():.1f}%", f"{s_srvcc.max():.1f}%", "Đảm bảo thoại 3G", "EXCELLENT" if v >= 95.0 else "WARNING")
@@ -801,7 +791,6 @@ fb_cell_counts = pd.DataFrame()
 fb_tf_df = pd.DataFrame()
 
 if cell_col and "Freqband" in filtered_df.columns:
-    # 1. Thống kê Số lượng Cell theo Freqband (Dựa trên Cell duy nhất)
     cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
     fb_cell_counts = cell_fb_df["Freqband"].value_counts().reset_index()
     fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
@@ -821,7 +810,6 @@ if cell_col and "Freqband" in filtered_df.columns:
     with fb_col1:
         st.plotly_chart(fig_fb_cell, use_container_width=True)
 
-    # 2. Thống kê Tổng Traffic theo Freqband
     if "Total Data Traffic Volume (GB)" in filtered_df.columns:
         fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
         fb_tf_df = fb_tf_df.sort_values(by="Freqband")
@@ -863,6 +851,7 @@ kpi_dict = {
     "Service Drop Rate (%)": "Service Drop (all service)",
     "Call Setup SR (%)": "Call Setup Success Rate",
     "Intra-Freq HO SR (%)": "Intra-frequency HO (%)",
+    "Inter-Freq HO SR (%)": "Inter-frequency HO (%)",
     "Inter-RAT HOSR (%)": "Inter-RAT HOSR (LTE to WCDMA) (%)",
     "VoLTE Traffic (Erl)": "VoLTE Traffic (Erl)",
     "VoLTE Drop Rate (%)": "Call Drop Rate (VoLTE)",
@@ -890,6 +879,7 @@ if time_mode == "Chỉ theo giờ (24h Avg)":
         "Call Setup Success Rate": "mean",
         "Intra-frequency HO (%)": "mean",
         "Inter-frequency HO (%)": "mean",
+        "Inter-RAT HOSR (LTE to WCDMA) (%)": "mean",
         "Resource Block Untilizing Rate Downlink (%)": "mean",
         "VoLTE E-RAB Call Setup Success Rate": "mean",
         "Call Drop Rate (VoLTE)": "mean",
@@ -907,6 +897,7 @@ else:
         "Call Setup Success Rate": "mean",
         "Intra-frequency HO (%)": "mean",
         "Inter-frequency HO (%)": "mean",
+        "Inter-RAT HOSR (LTE to WCDMA) (%)": "mean",
         "Resource Block Untilizing Rate Downlink (%)": "mean",
         "VoLTE E-RAB Call Setup Success Rate": "mean",
         "Call Drop Rate (VoLTE)": "mean",
@@ -1055,11 +1046,10 @@ if cell_col:
         "cqi": s_cqi.mean(),
         "prb": s_prb.mean(),
         "intra": s_intra.mean(),
-        "irat": s_irat.mean(),
+        "inter": s_inter_ho.mean(),
         "srvcc": s_srvcc.mean(),
     }
 
-    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
     c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).agg({
         "Total Data Traffic Volume (GB)": "sum",
         "DL_Throughput_Mbps": "mean",
