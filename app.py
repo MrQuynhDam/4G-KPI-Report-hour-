@@ -299,7 +299,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             plt.savefig(img_b, format='png', dpi=150)
             plt.close()
             img_b.seek(0)
-            return Image(img_b, width=740, height=148)
+            return Image(img_b, width=740, height=300)
 
         # Chart 1: CSSR & Data Traffic
         c1_img = make_single_chart("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", tf_vals, cssr_vals, "CSSR (%)", "#10b981")
