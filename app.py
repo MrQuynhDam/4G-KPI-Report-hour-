@@ -653,15 +653,16 @@ site_col = "Site Name" if "Site Name" in df.columns else None
 
 sel_sites = []
 if site_col:
-    all_sites = sorted(df[site_col].dropna().unique())
-    chk_all_s = st.sidebar.checkbox("Tất cả Site", value=True)
-    if chk_all_s:
-        sel_sites = all_sites
-    else:
-        for s in all_sites:
-            if st.sidebar.checkbox(str(s), value=True, key=f"s_{s}"):
-                sel_sites.append(s)
-
+    all_sites = sorted(df[site_col].dropna().unique().tolist())
+    
+    # Sử dụng multiselect thay vì vòng lặp checkbox
+    sel_sites = st.sidebar.multiselect(
+        "Chọn Site",
+        options=all_sites,
+        default=all_sites,  # Mặc định chọn tất cả giống logic ban đầu của bạn
+        label_visibility="collapsed"  # Ẩn nhãn thừa vì phía trên đã có subheader
+    )
+    
     filtered_df = df[(df["Date"].isin(sel_dates)) & (df[site_col].isin(sel_sites))]
 else:
     filtered_df = df[df["Date"].isin(sel_dates)]
