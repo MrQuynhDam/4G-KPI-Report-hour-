@@ -264,16 +264,27 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             ax2_fb.tick_params(axis='both', labelsize=7)
             ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
             
+            # --- TĂNG KHOẢNG TRỐNG TRỤC Y (MỚI BỔ SUNG) ---
             max_tf = max(fb_traffics) if fb_traffics else 1
+            ax2_fb.set_ylim(0, max_tf * 1.18)  # Mở rộng giới hạn trên của trục Y lên 18%
+            
             for bar in fb_bars:
                 yval = bar.get_height()
-                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.02), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
+                ax2_fb.text(
+                    bar.get_x() + bar.get_width()/2.0, 
+                    yval + (max_tf * 0.02), 
+                    f"{yval:,.1f} GB", 
+                    ha='center', 
+                    va='bottom', 
+                    fontsize=6.5, 
+                    fontweight='bold'
+                )
 
         plt.tight_layout()
         plt.savefig(fb_img_buf, format='png', dpi=150)
         plt.close()
         fb_img_buf.seek(0)
-        story.append(Image(fb_img_buf, width=740, height=195))
+        story.append(Image(fb_img_buf, width=740, height=188))
         story.append(Spacer(1, 10))
 
     # MỤC II. 6 CHARTS XU HƯỚNG
