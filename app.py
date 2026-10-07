@@ -366,11 +366,11 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in tr_sub.iterrows():
             tr_data.append([
-                p_cell(row.iloc[0]),
-                p_cell(row.iloc[1]),
-                p_cell(f"{row.iloc[2]:,.2f}"),
-                p_cell(f"{row.iloc[3]:.2f}"),
-                p_cell(f"{row.iloc[4]:.2f}")
+                p_cell(row.get("Site Name", "")),
+                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}"),
+                p_cell(f"{row.get('DL_Throughput_Mbps', 0):.2f}"),
+                p_cell(f"{row.get('Resource Block Untilizing Rate Downlink (%)', 0):.2f}")
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
