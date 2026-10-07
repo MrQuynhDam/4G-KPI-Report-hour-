@@ -940,7 +940,7 @@ if cell_col:
     top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
 
     st.markdown("---")
-    st.markdown("### 📄 Báo Cáo Cấp Trên (Executive PDF Export)")
+    st.markdown("### 📄 PDF Report Export)")
     summary_data = {
         "tf": s_tf.sum(),
         "cssr": s_cssr.mean(),
@@ -982,10 +982,10 @@ if cell_col:
     )
 
     st.download_button(
-        label="📑 Tải Báo Cáo PDF Chuẩn Font Tiếng Việt (Visual Cards, 6 Charts, Top 10 Traffic & Worst 10 CSSR/DCR/HO)",
+        label="📑 Tải Báo Cáo PDF...)",
         data=pdf_buf,
-        file_name="Bao_Cao_Toi_Uu_Mang_4G_Executive.pdf",
+        file_name="4G_Network_Health.pdf",
         mime="application/pdf",
     )
 
-st.caption("🚀 Universal 4G RAN Dashboard — Streamlit & ReportLab")
+st.caption("🚀 4G RAN Report — Hourly in 3 or 4 days")
