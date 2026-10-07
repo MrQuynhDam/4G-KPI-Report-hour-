@@ -349,10 +349,195 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(c6_img)
         story.append(Spacer(1, 10))
 
+    story.append(PageBreak())
+
+    # ---------------------------------------------------------
+    # MỤC III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
+    # ---------------------------------------------------------
+    story.append(Paragraph("III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
+    story.append(Spacer(1, 4))
+
+    def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
+        p_st = ParagraphStyle('PC', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
+        txt = f"<b>{text}</b>" if is_bold else str(text)
+        return Paragraph(txt, p_st)
+
+    if not top10_cells.empty:
+        story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
+        story.append(Spacer(1, 2))
+        tr_cols = [c for c in top10_cells.columns if c in ["Site Name", "Tên đối tượng", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:5]
+        tr_sub = top10_cells[tr_cols].head(10)
+
+        tr_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Cell Name", True, color_hex='#ffffff'),
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff'),
+            p_cell("DL Thrp (Mbps)", True, color_hex='#ffffff'),
+            p_cell("PRB DL (%)", True, color_hex='#ffffff')
+        ]]
+        for _, row in tr_sub.iterrows():
+            tr_data.append([
+                p_cell(row.iloc[0]),
+                p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:,.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}"),
+                p_cell(f"{row.iloc[4]:.2f}")
+            ])
+
+        t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
+        t_tr.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#047857")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_tr)
+        story.append(Spacer(1, 8))
+
+    if not top10_sites.empty:
+        story.append(Paragraph("<b>2. Top 10 Site có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
+        story.append(Spacer(1, 2))
+        ts_cols = [c for c in top10_sites.columns if c in ["Site Name", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:4]
+        ts_sub = top10_sites[ts_cols].head(10)
+
+        ts_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff'),
+            p_cell("DL Thrp Avg (Mbps)", True, color_hex='#ffffff'),
+            p_cell("PRB DL Avg (%)", True, color_hex='#ffffff')
+        ]]
+        for _, row in ts_sub.iterrows():
+            ts_data.append([
+                p_cell(row.iloc[0]),
+                p_cell(f"{row.iloc[1]:,.2f}"),
+                p_cell(f"{row.iloc[2]:.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}")
+            ])
+
+        t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
+        t_ts.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0f766e")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_ts)
+        story.append(Spacer(1, 10))
+
+    story.append(PageBreak())
+
+    # ---------------------------------------------------------
+    # MỤC IV. WORST 10 CHO CÁC KPI: CSSR, DCR VÀ HANDOVER
+    # ---------------------------------------------------------
+    story.append(Paragraph("IV. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)", h2_style))
+    story.append(Spacer(1, 4))
+
+    # A. Worst 10 CSSR
+    if not worst10_cssr.empty:
+        story.append(Paragraph("<b>1. Worst 10 Cells theo Tỷ lệ Thiết lập Cuộc gọi Thấp (CSSR):</b>", norm_style))
+        story.append(Spacer(1, 2))
+        w_cols = [c for c in worst10_cssr.columns if c in ["Site Name", "Tên đối tượng", "Call Setup Success Rate", "Service Drop (all service)", "Total Data Traffic Volume (GB)"]][:5]
+        w_sub = worst10_cssr[w_cols].head(10)
+        
+        w_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Cell Name", True, color_hex='#ffffff'),
+            p_cell("CSSR (%)", True, color_hex='#ffffff'),
+            p_cell("Drop Rate (%)", True, color_hex='#ffffff'),
+            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+        ]]
+        for _, row in w_sub.iterrows():
+            w_data.append([
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.3f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+            ])
+        t_cssr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_cssr.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#991b1b")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_cssr)
+        story.append(Spacer(1, 8))
+
+    # B. Worst 10 DCR / Drop Rate
+    if not worst10_dcr.empty:
+        story.append(Paragraph("<b>2. Worst 10 Cells theo Tỷ lệ Rớt Dịch vụ Cao (DCR / Drop Rate):</b>", norm_style))
+        story.append(Spacer(1, 2))
+        w_cols = [c for c in worst10_dcr.columns if c in ["Site Name", "Tên đối tượng", "Service Drop (all service)", "Call Setup Success Rate", "Total Data Traffic Volume (GB)"]][:5]
+        w_sub = worst10_dcr[w_cols].head(10)
+        
+        w_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Cell Name", True, color_hex='#ffffff'),
+            p_cell("Drop Rate (%)", True, color_hex='#ffffff'),
+            p_cell("CSSR (%)", True, color_hex='#ffffff'),
+            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+        ]]
+        for _, row in w_sub.iterrows():
+            w_data.append([
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.3f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+            ])
+        t_dcr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_dcr.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#b91c1c")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_dcr)
+        story.append(Spacer(1, 8))
+
+    # C. Worst 10 Handover
+    if not worst10_ho.empty:
+        story.append(Paragraph("<b>3. Worst 10 Cells theo Tỷ lệ Chuyển giao Thấp (Handover SR):</b>", norm_style))
+        story.append(Spacer(1, 2))
+        w_cols = [c for c in worst10_ho.columns if c in ["Site Name", "Tên đối tượng", "Intra-frequency HO (%)", "Inter-frequency HO (%)", "Total Data Traffic Volume (GB)"]][:5]
+        w_sub = worst10_ho[w_cols].head(10)
+        
+        w_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Cell Name", True, color_hex='#ffffff'),
+            p_cell("Intra-HO (%)", True, color_hex='#ffffff'),
+            p_cell("Inter-HO (%)", True, color_hex='#ffffff'),
+            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+        ]]
+        for _, row in w_sub.iterrows():
+            w_data.append([
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+            ])
+        t_ho = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_ho.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#c2410c")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_ho)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
 
 # ---------------------------------------------------------
 # 3. DATA PROCESSING
 # ---------------------------------------------------------
+@st.cache_data
 def process_data(file_input):
     df = pd.read_csv(file_input)
 
