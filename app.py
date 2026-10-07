@@ -151,38 +151,13 @@ st.markdown(
 # ---------------------------------------------------------
 # 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, 6 CHARTS, TOP 10 & WORST 10
 # ---------------------------------------------------------
-@st.cache_data
-def get_sample_csv():
-    data = {
-        "Hãng": ["ERICSSON"] * 10,
-        "Tỉnh/Tp": ["DTP"] * 10,
-        "Phường/xã": ["DTP022"] * 10,
-        "Site Name": ["LN-CBE001M-TGG"] * 10,
-        "Mã đối tượng": [f"ENM13/LN-CBE001M-TGG/{i}" for i in range(11, 21)],
-        "Tên đối tượng": [f"4G-CBE001M{i}-TGG" for i in range(11, 21)],
-        "Loại đối tượng": ["CELL"] * 10,
-        "Thời gian": ["01/10/2026 00:00"] * 10,
-        "Giờ": [0.0] * 10,
-        "User Uplink Average Throughput (Kbps)": [1054.3, 2100.5, 3400.2, 1200.0, 2800.1, 3100.0, 1800.4, 2500.0, 2900.0, 1500.0],
-        "User Downlink Average Throughput (Kbps)": [41647.3, 25000.0, 18000.5, 32000.0, 45000.0, 12000.0, 28000.0, 39000.0, 48000.0, 15000.0],
-        "CQI_4G": [98.07, 95.50, 91.20, 96.80, 94.10, 88.50, 97.30, 93.20, 98.10, 89.40],
-        "Call Setup Success Rate": [99.90, 99.85, 99.70, 99.95, 99.60, 99.10, 99.88, 99.92, 99.75, 99.30],
-        "Inter-RAT HOSR (LTE to WCDMA) (%)": [94.83, 95.00, 92.10, 96.50, 93.80, 91.00, 95.20, 94.00, 96.00, 90.50],
-        "Inter-frequency HO (%)": [98.50, 98.10, 97.60, 99.00, 98.20, 96.50, 98.80, 98.40, 99.10, 97.00],
-        "Intra-frequency HO (%)": [99.64, 99.20, 98.80, 99.70, 99.10, 98.20, 99.50, 99.30, 99.80, 98.00],
-        "Resource Block Untilizing Rate Downlink (%)": [9.33, 15.20, 22.40, 11.10, 18.50, 38.20, 12.80, 14.50, 8.90, 29.40],
-        "Service Drop (all service)": [0.08, 0.12, 0.15, 0.05, 0.20, 0.45, 0.09, 0.11, 0.04, 0.35],
-        "Total Data Traffic Volume (GB)": [12.5, 18.2, 25.4, 14.1, 20.8, 35.6, 16.3, 19.0, 11.2, 28.9],
-        "Traffic Volumn DL (GB)": [11.2, 16.5, 23.1, 12.8, 18.9, 32.1, 14.8, 17.2, 10.1, 26.0],
-        "Traffic Volume UL (GB)": [1.3, 1.7, 2.3, 1.3, 1.9, 3.5, 1.5, 1.8, 1.1, 2.9],
-        "SRVCC Success Rate (LTE to WCDMA)": [97.75, 98.00, 96.50, 98.50, 95.80, 94.10, 97.90, 98.20, 98.80, 95.00],
-        "Call Drop Rate (VoLTE)": [0.00, 0.05, 0.10, 0.00, 0.18, 0.35, 0.02, 0.04, 0.00, 0.25],
-        "Inter-frequency HO Success Rates (VoLTE)": [100.0, 99.5, 98.0, 100.0, 99.0, 97.5, 100.0, 99.8, 100.0, 98.2],
-        "Intra-frequency HO Success Rates (VoLTE)": [100.0, 100.0, 99.5, 100.0, 99.8, 98.5, 100.0, 100.0, 100.0, 99.0],
-        "VoLTE E-RAB Call Setup Success Rate": [100.0, 99.9, 99.8, 100.0, 99.7, 99.2, 100.0, 100.0, 100.0, 99.5],
-        "VoLTE Traffic (Erl)": [0.066, 0.120, 0.210, 0.080, 0.150, 0.310, 0.095, 0.110, 0.050, 0.240],
-    }
-    return pd.DataFrame(data).to_csv(index=False).encode("utf-8")
+def get_sample_file_bytes():
+    """Đọc trực tiếp tệp 4G_Sample.csv có sẵn trên GitHub/thư mục dự án"""
+    for fname in ["4G_Sample.csv", "4G.csv"]:
+        if os.path.exists(fname):
+            with open(fname, "rb") as f:
+                return f.read(), fname
+    return None, None
 
 
 def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_ho):
@@ -605,12 +580,14 @@ def process_data(file_input):
 # ---------------------------------------------------------
 st.sidebar.title("📶 Navigation")
 
-st.sidebar.download_button(
-    label="📥 Tải File Mẫu",
-    data=get_sample_csv(),
-    file_name="4G_Sample.csv",
-    mime="text/csv",
-)
+sample_bytes, sample_fname = get_sample_file_bytes()
+if sample_bytes:
+    st.sidebar.download_button(
+        label=f"📥 Tải File Mẫu ({sample_fname})",
+        data=sample_bytes,
+        file_name=sample_fname,
+        mime="text/csv",
+    )
 
 st.sidebar.markdown("---")
 
@@ -619,8 +596,11 @@ up_file = st.sidebar.file_uploader("📂 Tải CSV KPI:", type=["csv"])
 if up_file is not None:
     st.sidebar.success("✅ Đã tải file!")
     df = process_data(up_file)
+elif os.path.exists("4G_Sample.csv"):
+    st.sidebar.info("ℹ️ Đang dùng dữ liệu mẫu 4G_Sample.csv")
+    df = process_data("4G_Sample.csv")
 elif os.path.exists("4G.csv"):
-    st.sidebar.info("ℹ️ Dùng file mẫu 4G.csv")
+    st.sidebar.info("ℹ️ Đang dùng dữ liệu mẫu 4G.csv")
     df = process_data("4G.csv")
 else:
     st.info("👋 Vui lòng tải file CSV ở bên trái.")
