@@ -267,13 +267,13 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             max_tf = max(fb_traffics) if fb_traffics else 1
             for bar in fb_bars:
                 yval = bar.get_height()
-                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.2), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
+                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.02), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
 
         plt.tight_layout()
         plt.savefig(fb_img_buf, format='png', dpi=150)
         plt.close()
         fb_img_buf.seek(0)
-        story.append(Image(fb_img_buf, width=740, height=188))
+        story.append(Image(fb_img_buf, width=740, height=195))
         story.append(Spacer(1, 10))
 
     # MỤC II. 6 CHARTS XU HƯỚNG
