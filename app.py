@@ -263,7 +263,18 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
     if not hourly_trend_df.empty:
         df_chart = hourly_trend_df.copy()
-        x_labels = [str(r.get("TimeLabel", f"{int(r.get('Hour', 0)):02d}:00")) for _, r in df_chart.iterrows()]
+        x_labels = []
+        for _, r in df_chart.iterrows():
+            if "TimeLabel" in r and pd.notnull(r["TimeLabel"]) and str(r["TimeLabel"]).strip() != "":
+                x_labels.append(str(r["TimeLabel"]))
+            elif "DateTime" in r and pd.notnull(r["DateTime"]):
+                x_labels.append(pd.to_datetime(r["DateTime"]).strftime("%d/%m %H:00"))
+            elif "Date" in r and pd.notnull(r["Date"]):
+                d_str = pd.to_datetime(r["Date"]).strftime("%d/%m") if pd.notnull(r["Date"]) else ""
+                h_str = f"{int(r.get('Hour', 0)):02d}:00"
+                x_labels.append(f"{d_str} {h_str}".strip())
+            else:
+                x_labels.append(f"{int(r.get('Hour', 0)):02d}:00")
         n_pts = len(x_labels)
         step = max(1, n_pts // 24)
 
@@ -931,9 +942,25 @@ if cell_col:
         "srvcc": s_srvcc.mean(),
     }
 
+    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
+    c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).agg({
+        "Total Data Traffic Volume (GB)": "sum",
+        "DL_Throughput_Mbps": "mean",
+        "UL_Throughput_Mbps": "mean",
+        "Service Drop (all service)": "mean",
+        "Call Setup Success Rate": "mean",
+        "Intra-frequency HO (%)": "mean",
+        "Inter-frequency HO (%)": "mean",
+        "Resource Block Untilizing Rate Downlink (%)": "mean",
+        "VoLTE E-RAB Call Setup Success Rate": "mean",
+        "Call Drop Rate (VoLTE)": "mean",
+        "VoLTE Traffic (Erl)": "sum"
+    }).reset_index().sort_values(by="DateTime")
+    c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m %H:00")
+
     pdf_buf = generate_pdf_report(
         summary_data,
-        c_data,
+        c_data_timeline,
         top10_sites_pdf,
         top10_cells_pdf,
         worst10_cssr,
