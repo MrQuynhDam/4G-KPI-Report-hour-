@@ -228,9 +228,9 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(grid_cards)
     story.append(Spacer(1, 8))
 
-    # MỤC I.5. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
+    # MỤC I. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
     if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
-        story.append(Paragraph("I.5. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
+        story.append(Paragraph("I. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
         story.append(Spacer(1, 2))
         
         fb_img_buf = io.BytesIO()
@@ -267,7 +267,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             max_tf = max(fb_traffics) if fb_traffics else 1
             for bar in fb_bars:
                 yval = bar.get_height()
-                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.02), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
+                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.2), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
 
         plt.tight_layout()
         plt.savefig(fb_img_buf, format='png', dpi=150)
