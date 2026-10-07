@@ -1,5 +1,8 @@
 import io
 import os
+import ssl
+import urllib.request
+import unicodedata
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -72,21 +75,31 @@ FONT_NAME = "VietFont"
 FONT_NAME_BOLD = "VietFont-Bold"
 
 if font_reg_path and font_bold_path:
-    pdfmetrics.registerFont(TTFont(FONT_NAME, font_reg_path))
-    pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, font_bold_path))
-    
-    addMapping(FONT_NAME, 0, 0, FONT_NAME)
-    addMapping(FONT_NAME, 1, 0, FONT_NAME_BOLD)
-    addMapping(FONT_NAME, 0, 1, FONT_NAME)
-    addMapping(FONT_NAME, 1, 1, FONT_NAME_BOLD)
+    try:
+        pdfmetrics.registerFont(TTFont(FONT_NAME, font_reg_path))
+        pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, font_bold_path))
+        
+        addMapping(FONT_NAME, 0, 0, FONT_NAME)
+        addMapping(FONT_NAME, 1, 0, FONT_NAME_BOLD)
+        addMapping(FONT_NAME, 0, 1, FONT_NAME)
+        addMapping(FONT_NAME, 1, 1, FONT_NAME_BOLD)
 
-    addMapping(FONT_NAME_BOLD, 0, 0, FONT_NAME_BOLD)
-    addMapping(FONT_NAME_BOLD, 1, 0, FONT_NAME_BOLD)
-    addMapping(FONT_NAME_BOLD, 0, 1, FONT_NAME_BOLD)
-    addMapping(FONT_NAME_BOLD, 1, 1, FONT_NAME_BOLD)
+        addMapping(FONT_NAME_BOLD, 0, 0, FONT_NAME_BOLD)
+        addMapping(FONT_NAME_BOLD, 1, 0, FONT_NAME_BOLD)
+        addMapping(FONT_NAME_BOLD, 0, 1, FONT_NAME_BOLD)
+        addMapping(FONT_NAME_BOLD, 1, 1, FONT_NAME_BOLD)
+    except Exception:
+        FONT_NAME = "Helvetica"
+        FONT_NAME_BOLD = "Helvetica-Bold"
 else:
     FONT_NAME = "Helvetica"
     FONT_NAME_BOLD = "Helvetica-Bold"
+
+# Register standard fallbacks
+addMapping("Helvetica", 0, 0, "Helvetica")
+addMapping("Helvetica", 1, 0, "Helvetica-Bold")
+addMapping("Helvetica", 0, 1, "Helvetica-Oblique")
+addMapping("Helvetica", 1, 1, "Helvetica-BoldOblique")
 
 # Matplotlib Unicode Setup
 matplotlib.rcParams["font.sans-serif"] = [font_family_name, "DejaVu Sans", "Liberation Sans", "Arial"]
@@ -136,7 +149,7 @@ st.markdown(
 
 
 # ---------------------------------------------------------
-# 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, 5 CHARTS, TOP 10 & WORST 10
+# 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, 6 CHARTS, TOP 10 & WORST 10
 # ---------------------------------------------------------
 @st.cache_data
 def get_sample_csv():
@@ -173,7 +186,7 @@ def get_sample_csv():
 
 
 def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_ho):
-    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, 5 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
+    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, 6 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -243,18 +256,19 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------
-    # MỤC II. 5 CHARTS XU HƯỚNG THEO ĐÚNG YÊU CẦU ĐỀ BÀI
+    # MỤC II. 6 CHARTS XU HƯỚNG THEO ĐÚNG YÊU CẦU ĐỀ BÀI
     # ---------------------------------------------------------
     story.append(Paragraph("II. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY (HOURLY KPI CHARTS)", h2_style))
     story.append(Spacer(1, 4))
 
     if not hourly_trend_df.empty:
-        df_chart = hourly_trend_df.head(24)
+        df_chart = hourly_trend_df.copy()
         x_labels = [str(r.get("TimeLabel", f"{int(r.get('Hour', 0)):02d}:00")) for _, r in df_chart.iterrows()]
         
         tf_vals = df_chart.get("Total Data Traffic Volume (GB)", pd.Series([0]*len(x_labels))).values
         cssr_vals = df_chart.get("Call Setup Success Rate", pd.Series([0]*len(x_labels))).values
         drop_vals = df_chart.get("Service Drop (all service)", pd.Series([0]*len(x_labels))).values
+        dl_vals = df_chart.get("DL_Throughput_Mbps", pd.Series([0]*len(x_labels))).values
         intra_vals = df_chart.get("Intra-frequency HO (%)", pd.Series([0]*len(x_labels))).values
         inter_vals = df_chart.get("Inter-frequency HO (%)", pd.Series([0]*len(x_labels))).values
         
@@ -262,31 +276,31 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         volte_drop_vals = df_chart.get("Call Drop Rate (VoLTE)", pd.Series([0]*len(x_labels))).values
         volte_tf_vals = df_chart.get("VoLTE Traffic (Erl)", pd.Series([0]*len(x_labels))).values
 
-        # --- CẶP CHARTS 1 & 2 ---
+        # --- PAIR 1: CHART 1 & CHART 2 ---
         img_buf1 = io.BytesIO()
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 2.6), dpi=150)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 2.3), dpi=150)
 
         # Chart 1: CSSR và Data Traffic
-        ax1.bar(x_labels, tf_vals, color='#3b82f6', alpha=0.6, label='Data Traffic (GB)')
+        ax1.bar(x_labels, tf_vals, color='#3b82f6', alpha=0.5, label='Traffic (GB)')
         ax1.set_ylabel("Traffic (GB)", color='#1d4ed8', fontweight='bold', fontsize=7.5)
-        ax1.tick_params(axis='x', rotation=45, labelsize=6.5)
+        ax1.tick_params(axis='x', rotation=45, labelsize=6)
         ax1.tick_params(axis='y', labelcolor='#1d4ed8', labelsize=6.5)
         ax1.grid(True, linestyle='--', alpha=0.3)
         ax1_twin = ax1.twinx()
-        ax1_twin.plot(x_labels, cssr_vals, color='#10b981', marker='o', linewidth=1.8, label='CSSR (%)')
+        ax1_twin.plot(x_labels, cssr_vals, color='#10b981', marker='o', linewidth=1.6, label='CSSR (%)')
         ax1_twin.set_ylabel("CSSR (%)", color='#047857', fontweight='bold', fontsize=7.5)
         ax1_twin.tick_params(axis='y', labelcolor='#047857', labelsize=6.5)
         ax1.set_title("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", fontsize=8.5, fontweight='bold', pad=4)
 
-        # Chart 2: DCR (Service Drop) và Data Traffic
-        ax2.bar(x_labels, tf_vals, color='#3b82f6', alpha=0.6, label='Data Traffic (GB)')
+        # Chart 2: DCR và Data Traffic
+        ax2.bar(x_labels, tf_vals, color='#3b82f6', alpha=0.5, label='Traffic (GB)')
         ax2.set_ylabel("Traffic (GB)", color='#1d4ed8', fontweight='bold', fontsize=7.5)
-        ax2.tick_params(axis='x', rotation=45, labelsize=6.5)
+        ax2.tick_params(axis='x', rotation=45, labelsize=6)
         ax2.tick_params(axis='y', labelcolor='#1d4ed8', labelsize=6.5)
         ax2.grid(True, linestyle='--', alpha=0.3)
         ax2_twin = ax2.twinx()
-        ax2_twin.plot(x_labels, drop_vals, color='#ef4444', marker='s', linewidth=1.8, label='DCR (%)')
-        ax2_twin.set_ylabel("DCR / Service Drop (%)", color='#b91c1c', fontweight='bold', fontsize=7.5)
+        ax2_twin.plot(x_labels, drop_vals, color='#ef4444', marker='s', linewidth=1.6, label='DCR (%)')
+        ax2_twin.set_ylabel("DCR / Drop Rate (%)", color='#b91c1c', fontweight='bold', fontsize=7.5)
         ax2_twin.tick_params(axis='y', labelcolor='#b91c1c', labelsize=6.5)
         ax2.set_title("Chart 2: Tỷ lệ DCR (%) & Data Traffic (GB)", fontsize=8.5, fontweight='bold', pad=4)
 
@@ -294,20 +308,36 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         plt.savefig(img_buf1, format='png', dpi=150)
         plt.close()
         img_buf1.seek(0)
-        story.append(Image(img_buf1, width=740, height=175))
+        story.append(Image(img_buf1, width=740, height=155))
         story.append(Spacer(1, 6))
 
-        # --- CHART 3: Inter HO và Intra HO ---
+        story.append(PageBreak())
+
+        # --- PAIR 2: CHART 3 & CHART 4 ---
         img_buf2 = io.BytesIO()
-        fig, ax3 = plt.subplots(figsize=(11, 2.3), dpi=150)
-        ax3.plot(x_labels, intra_vals, color='#059669', marker='o', linewidth=1.8, label='Intra-frequency HO SR (%)')
-        ax3.plot(x_labels, inter_vals, color='#d97706', marker='^', linewidth=1.8, linestyle='--', label='Inter-frequency HO SR (%)')
-        ax3.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
-        ax3.tick_params(axis='x', rotation=45, labelsize=6.5)
-        ax3.tick_params(axis='y', labelsize=6.5)
+        fig, (ax3, ax4) = plt.subplots(1, 2, figsize=(11, 2.3), dpi=150)
+
+        # Chart 3: Download Throughput và Data Traffic
+        ax3.bar(x_labels, tf_vals, color='#3b82f6', alpha=0.5, label='Traffic (GB)')
+        ax3.set_ylabel("Traffic (GB)", color='#1d4ed8', fontweight='bold', fontsize=7.5)
+        ax3.tick_params(axis='x', rotation=45, labelsize=6)
+        ax3.tick_params(axis='y', labelcolor='#1d4ed8', labelsize=6.5)
         ax3.grid(True, linestyle='--', alpha=0.3)
-        ax3.legend(fontsize=7, loc='lower right')
-        ax3.set_title("Chart 3: So sánh Tỷ lệ Chuyển giao Intra-frequency HO (%) & Inter-frequency HO (%)", fontsize=8.5, fontweight='bold', pad=4)
+        ax3_twin = ax3.twinx()
+        ax3_twin.plot(x_labels, dl_vals, color='#8b5cf6', marker='^', linewidth=1.6, label='DL Thrp (Mbps)')
+        ax3_twin.set_ylabel("DL Thrp (Mbps)", color='#6d28d9', fontweight='bold', fontsize=7.5)
+        ax3_twin.tick_params(axis='y', labelcolor='#6d28d9', labelsize=6.5)
+        ax3.set_title("Chart 3: Download Throughput (Mbps) & Data Traffic (GB)", fontsize=8.5, fontweight='bold', pad=4)
+
+        # Chart 4: Intra HO và Inter HO
+        ax4.plot(x_labels, intra_vals, color='#059669', marker='o', linewidth=1.6, label='Intra-freq HO (%)')
+        ax4.plot(x_labels, inter_vals, color='#d97706', marker='s', linewidth=1.6, linestyle='--', label='Inter-freq HO (%)')
+        ax4.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
+        ax4.tick_params(axis='x', rotation=45, labelsize=6)
+        ax4.tick_params(axis='y', labelsize=6.5)
+        ax4.grid(True, linestyle='--', alpha=0.3)
+        ax4.legend(fontsize=6.5, loc='lower right')
+        ax4.set_title("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", fontsize=8.5, fontweight='bold', pad=4)
 
         plt.tight_layout()
         plt.savefig(img_buf2, format='png', dpi=150)
@@ -316,41 +346,39 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(Image(img_buf2, width=740, height=155))
         story.append(Spacer(1, 6))
 
-        story.append(PageBreak())
-
-        # --- CẶP CHARTS 4 & 5 (VoLTE) ---
+        # --- PAIR 3: CHART 5 & CHART 6 (VoLTE) ---
         img_buf3 = io.BytesIO()
-        fig, (ax4, ax5) = plt.subplots(1, 2, figsize=(11, 2.6), dpi=150)
+        fig, (ax5, ax6) = plt.subplots(1, 2, figsize=(11, 2.3), dpi=150)
 
-        # Chart 4: CSSR VoLTE và Traffic VoLTE
-        ax4.bar(x_labels, volte_tf_vals, color='#8b5cf6', alpha=0.6, label='VoLTE Traffic (Erl)')
-        ax4.set_ylabel("VoLTE Traffic (Erl)", color='#6d28d9', fontweight='bold', fontsize=7.5)
-        ax4.tick_params(axis='x', rotation=45, labelsize=6.5)
-        ax4.tick_params(axis='y', labelcolor='#6d28d9', labelsize=6.5)
-        ax4.grid(True, linestyle='--', alpha=0.3)
-        ax4_twin = ax4.twinx()
-        ax4_twin.plot(x_labels, volte_cssr_vals, color='#10b981', marker='o', linewidth=1.8, label='VoLTE CSSR (%)')
-        ax4_twin.set_ylabel("VoLTE CSSR (%)", color='#047857', fontweight='bold', fontsize=7.5)
-        ax4_twin.tick_params(axis='y', labelcolor='#047857', labelsize=6.5)
-        ax4.set_title("Chart 4: VoLTE CSSR (%) & VoLTE Traffic (Erl)", fontsize=8.5, fontweight='bold', pad=4)
-
-        # Chart 5: DCR VoLTE và Traffic VoLTE
-        ax5.bar(x_labels, volte_tf_vals, color='#8b5cf6', alpha=0.6, label='VoLTE Traffic (Erl)')
-        ax5.set_ylabel("VoLTE Traffic (Erl)", color='#6d28d9', fontweight='bold', fontsize=7.5)
-        ax5.tick_params(axis='x', rotation=45, labelsize=6.5)
-        ax5.tick_params(axis='y', labelcolor='#6d28d9', labelsize=6.5)
+        # Chart 5: CSSR VoLTE và Traffic VoLTE
+        ax5.bar(x_labels, volte_tf_vals, color='#a855f7', alpha=0.5, label='VoLTE Traffic (Erl)')
+        ax5.set_ylabel("VoLTE Traffic (Erl)", color='#7e22ce', fontweight='bold', fontsize=7.5)
+        ax5.tick_params(axis='x', rotation=45, labelsize=6)
+        ax5.tick_params(axis='y', labelcolor='#7e22ce', labelsize=6.5)
         ax5.grid(True, linestyle='--', alpha=0.3)
         ax5_twin = ax5.twinx()
-        ax5_twin.plot(x_labels, volte_drop_vals, color='#dc2626', marker='x', linewidth=1.8, label='VoLTE Drop (%)')
-        ax5_twin.set_ylabel("VoLTE Drop Rate (%)", color='#991b1b', fontweight='bold', fontsize=7.5)
-        ax5_twin.tick_params(axis='y', labelcolor='#991b1b', labelsize=6.5)
-        ax5.set_title("Chart 5: VoLTE DCR (%) & VoLTE Traffic (Erl)", fontsize=8.5, fontweight='bold', pad=4)
+        ax5_twin.plot(x_labels, volte_cssr_vals, color='#10b981', marker='o', linewidth=1.6, label='VoLTE CSSR (%)')
+        ax5_twin.set_ylabel("VoLTE CSSR (%)", color='#047857', fontweight='bold', fontsize=7.5)
+        ax5_twin.tick_params(axis='y', labelcolor='#047857', labelsize=6.5)
+        ax5.set_title("Chart 5: VoLTE CSSR (%) & VoLTE Traffic (Erl)", fontsize=8.5, fontweight='bold', pad=4)
+
+        # Chart 6: DCR VoLTE và Traffic VoLTE
+        ax6.bar(x_labels, volte_tf_vals, color='#a855f7', alpha=0.5, label='VoLTE Traffic (Erl)')
+        ax6.set_ylabel("VoLTE Traffic (Erl)", color='#7e22ce', fontweight='bold', fontsize=7.5)
+        ax6.tick_params(axis='x', rotation=45, labelsize=6)
+        ax6.tick_params(axis='y', labelcolor='#7e22ce', labelsize=6.5)
+        ax6.grid(True, linestyle='--', alpha=0.3)
+        ax6_twin = ax6.twinx()
+        ax6_twin.plot(x_labels, volte_drop_vals, color='#dc2626', marker='x', linewidth=1.6, label='VoLTE DCR (%)')
+        ax6_twin.set_ylabel("VoLTE DCR (%)", color='#991b1b', fontweight='bold', fontsize=7.5)
+        ax6_twin.tick_params(axis='y', labelcolor='#991b1b', labelsize=6.5)
+        ax6.set_title("Chart 6: VoLTE DCR (%) & VoLTE Traffic (Erl)", fontsize=8.5, fontweight='bold', pad=4)
 
         plt.tight_layout()
         plt.savefig(img_buf3, format='png', dpi=150)
         plt.close()
         img_buf3.seek(0)
-        story.append(Image(img_buf3, width=740, height=175))
+        story.append(Image(img_buf3, width=740, height=155))
         story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------
@@ -944,7 +972,7 @@ if cell_col:
     )
 
     st.download_button(
-        label="📑 Tải Báo Cáo PDF Chuẩn Font Tiếng Việt (Visual Cards, 5 Charts, Top 10 Traffic & Worst 10 CSSR/DCR/HO)",
+        label="📑 Tải Báo Cáo PDF Chuẩn Font Tiếng Việt (Visual Cards, 6 Charts, Top 10 Traffic & Worst 10 CSSR/DCR/HO)",
         data=pdf_buf,
         file_name="Bao_Cao_Toi_Uu_Mang_4G_Executive.pdf",
         mime="application/pdf",
