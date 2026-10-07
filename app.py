@@ -268,33 +268,30 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                               line2_vals=None, line2_lbl=None, line2_color=None, 
                               bar_lbl="Traffic (GB)", is_bar_volte=False):
             img_b = io.BytesIO()
-            fig, ax = plt.subplots(figsize=(11, 3.568), dpi=150)
+            fig, ax = plt.subplots(figsize=(11, 2.2), dpi=150)
 
+            # Draw Bar
+            b_color = '#a855f7' if is_bar_volte else '#3b82f6'
+            ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
+            ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
+            ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
+            
             # X-ticks formatting
             ax.set_xticks(range(0, n_pts, step))
             ax.set_xticklabels([x_labels[i] for i in range(0, n_pts, step)], rotation=30 if n_pts > 15 else 0, ha='right' if n_pts > 15 else 'center', fontsize=6)
             ax.grid(True, linestyle='--', alpha=0.25)
 
             if line2_vals is None:
-                # Biểu đồ dạng Bar (Traffic) + 1 Line (KPI)
-                if bar_vals is not None:
-                    b_color = '#a855f7' if is_bar_volte else '#3b82f6'
-                    ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
-                    ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
-                    ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
-
+                # Dual axis chart
                 ax_t = ax.twinx()
                 ax_t.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax_t.set_ylabel(line1_lbl, color=line1_color, fontweight='bold', fontsize=7.5)
                 ax_t.tick_params(axis='y', labelcolor=line1_color, labelsize=6.5)
             else:
-                # Biểu đồ chỉ vẽ 2 đường Line (Intra & Inter HO) - KHÔNG vẽ cột Traffic
+                # Two lines chart (e.g. Intra & Inter HO)
                 ax.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax.plot(range(n_pts), line2_vals, color=line2_color, marker='s', markersize=2.5, linewidth=1.4, linestyle='--', label=line2_lbl)
                 ax.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
-                
-                # Giới hạn trục Y từ 80% - 100.5% cho dễ quan sát tỉ lệ Handover
-                ax.set_ylim(80, 100.5)
                 ax.legend(fontsize=6.5, loc='lower right')
 
             ax.set_title(chart_title, fontsize=8.5, fontweight='bold', pad=4)
@@ -302,7 +299,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             plt.savefig(img_b, format='png', dpi=150)
             plt.close()
             img_b.seek(0)
-            return Image(img_b, width=740, height=240)
+            return Image(img_b, width=740, height=148)
 
         # Chart 1: CSSR & Data Traffic
         c1_img = make_single_chart("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", tf_vals, cssr_vals, "CSSR (%)", "#10b981")
@@ -320,9 +317,9 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         c3_img = make_single_chart("Chart 3: Download Throughput (Mbps) & Data Traffic (GB)", tf_vals, dl_vals, "DL Thrp (Mbps)", "#8b5cf6")
         story.append(c3_img)
         story.append(Spacer(1, 8))
-        
-        # Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%) - Không vẽ Traffic
-        c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", None, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
+
+        # Chart 4: Intra HO & Inter HO
+        c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", tf_vals, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
         story.append(c4_img)
         story.append(Spacer(1, 8))
 
@@ -366,11 +363,11 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in tr_sub.iterrows():
             tr_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}"),
-                p_cell(f"{row.get('DL_Throughput_Mbps', 0):.2f}"),
-                p_cell(f"{row.get('Resource Block Untilizing Rate Downlink (%)', 0):.2f}")
+                p_cell(row.iloc[0]),
+                p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:,.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}"),
+                p_cell(f"{row.iloc[4]:.2f}")
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
@@ -423,28 +420,26 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph("IV. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)", h2_style))
     story.append(Spacer(1, 4))
 
-    # A. Worst 10 CSSR
+    # A. Worst 10 CSSR (4 cột: Site, Cell, CSSR %, Traffic)
     if not worst10_cssr.empty:
         story.append(Paragraph("<b>1. Worst 10 Cells theo Tỷ lệ Thiết lập Cuộc gọi Thấp (CSSR):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_cols = [c for c in worst10_cssr.columns if c in ["Site Name", "Tên đối tượng", "Call Setup Success Rate", "Service Drop (all service)", "Total Data Traffic Volume (GB)"]][:5]
-        w_sub = worst10_cssr[w_cols].head(10)
+        w_sub = worst10_cssr.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
             p_cell("Cell Name", True, color_hex='#ffffff'),
             p_cell("CSSR (%)", True, color_hex='#ffffff'),
-            p_cell("Drop Rate (%)", True, color_hex='#ffffff'),
-            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
-                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
-                p_cell(f"{row.iloc[3]:.3f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
-                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+                p_cell(row.get("Site Name", "")),
+                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(f"{row.get('Call Setup Success Rate', 0):.2f}%"),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
-        t_cssr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_cssr = Table(w_data, colWidths=[180, 220, 170, 170])
         t_cssr.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#991b1b")),
             ("BOTTOMPADDING", (0,0), (-1,-1), 3),
@@ -455,28 +450,26 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(t_cssr)
         story.append(Spacer(1, 8))
 
-    # B. Worst 10 DCR / Drop Rate
+    # B. Worst 10 DCR / Drop Rate (4 cột: Site, Cell, Drop Rate %, Traffic)
     if not worst10_dcr.empty:
         story.append(Paragraph("<b>2. Worst 10 Cells theo Tỷ lệ Rớt Dịch vụ Cao (DCR / Drop Rate):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_cols = [c for c in worst10_dcr.columns if c in ["Site Name", "Tên đối tượng", "Service Drop (all service)", "Call Setup Success Rate", "Total Data Traffic Volume (GB)"]][:5]
-        w_sub = worst10_dcr[w_cols].head(10)
+        w_sub = worst10_dcr.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
             p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Drop Rate (%)", True, color_hex='#ffffff'),
-            p_cell("CSSR (%)", True, color_hex='#ffffff'),
-            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Service Drop Rate (%)", True, color_hex='#ffffff'),
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
-                p_cell(f"{row.iloc[2]:.3f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
-                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
-                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+                p_cell(row.get("Site Name", "")),
+                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(f"{row.get('Service Drop (all service)', 0):.3f}%"),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
-        t_dcr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_dcr = Table(w_data, colWidths=[180, 220, 170, 170])
         t_dcr.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#b91c1c")),
             ("BOTTOMPADDING", (0,0), (-1,-1), 3),
@@ -487,28 +480,26 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(t_dcr)
         story.append(Spacer(1, 8))
 
-    # C. Worst 10 Handover
+    # C. Worst 10 Handover (4 cột: Site, Cell, Intra-HO %, Traffic)
     if not worst10_ho.empty:
         story.append(Paragraph("<b>3. Worst 10 Cells theo Tỷ lệ Chuyển giao Thấp (Handover SR):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_cols = [c for c in worst10_ho.columns if c in ["Site Name", "Tên đối tượng", "Intra-frequency HO (%)", "Inter-frequency HO (%)", "Total Data Traffic Volume (GB)"]][:5]
-        w_sub = worst10_ho[w_cols].head(10)
+        w_sub = worst10_ho.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
             p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Intra-HO (%)", True, color_hex='#ffffff'),
-            p_cell("Inter-HO (%)", True, color_hex='#ffffff'),
-            p_cell("Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Intra-frequency HO (%)", True, color_hex='#ffffff'),
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
-                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
-                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
-                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
+                p_cell(row.get("Site Name", "")),
+                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(f"{row.get('Intra-frequency HO (%)', 0):.2f}%"),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
-        t_ho = Table(w_data, colWidths=[130, 180, 110, 110, 110])
+        t_ho = Table(w_data, colWidths=[180, 220, 170, 170])
         t_ho.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#c2410c")),
             ("BOTTOMPADDING", (0,0), (-1,-1), 3),
