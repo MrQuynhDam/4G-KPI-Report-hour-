@@ -270,28 +270,28 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             img_b = io.BytesIO()
             fig, ax = plt.subplots(figsize=(11, 4.45), dpi=150)
 
-            # Draw Bar
-            b_color = '#a855f7' if is_bar_volte else '#3b82f6'
-            ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
-            ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
-            ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
-            
             # X-ticks formatting
             ax.set_xticks(range(0, n_pts, step))
             ax.set_xticklabels([x_labels[i] for i in range(0, n_pts, step)], rotation=30 if n_pts > 15 else 0, ha='right' if n_pts > 15 else 'center', fontsize=6)
             ax.grid(True, linestyle='--', alpha=0.25)
 
             if line2_vals is None:
-                # Dual axis chart
+                # Biểu đồ dạng Bar (Traffic) + 1 Line (KPI)
+                b_color = '#a855f7' if is_bar_volte else '#3b82f6'
+                ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
+                ax.set_ylabel(bar_lbl, color='#1d4ed8' if not is_bar_volte else '#7e22ce', fontweight='bold', fontsize=7.5)
+                ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
+
                 ax_t = ax.twinx()
                 ax_t.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax_t.set_ylabel(line1_lbl, color=line1_color, fontweight='bold', fontsize=7.5)
                 ax_t.tick_params(axis='y', labelcolor=line1_color, labelsize=6.5)
             else:
-                # Two lines chart (e.g. Intra & Inter HO)
+                # Biểu đồ chỉ vẽ 2 đường Line (Intra & Inter HO), KHÔNG vẽ cột Traffic
                 ax.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax.plot(range(n_pts), line2_vals, color=line2_color, marker='s', markersize=2.5, linewidth=1.4, linestyle='--', label=line2_lbl)
                 ax.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
+                ax.set_ylim(80, 100.5)  # Định dạng lại trục Y cho dễ nhìn tỷ lệ %
                 ax.legend(fontsize=6.5, loc='lower right')
 
             ax.set_title(chart_title, fontsize=8.5, fontweight='bold', pad=4)
@@ -317,11 +317,18 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         c3_img = make_single_chart("Chart 3: Download Throughput (Mbps) & Data Traffic (GB)", tf_vals, dl_vals, "DL Thrp (Mbps)", "#8b5cf6")
         story.append(c3_img)
         story.append(Spacer(1, 8))
-
-        # Chart 4: Intra HO & Inter HO
-        c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", tf_vals, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
-        story.append(c4_img)
-        story.append(Spacer(1, 8))
+        
+        # Chart 4: Chỉ so sánh Intra-freq HO (%) & Inter-freq HO (%) - Bỏ Traffic
+        c4_img = make_single_chart(
+            "Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", 
+            None, 
+            intra_vals, 
+            "Intra-freq HO (%)", 
+            "#059669", 
+            line2_vals=inter_vals, 
+            line2_lbl="Inter-freq HO (%)", 
+            line2_color="#d97706"
+        )
 
         story.append(PageBreak())
 
