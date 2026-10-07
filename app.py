@@ -213,7 +213,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         create_pdf_card("Radio Quality", "CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=95.00%", "Vùng phủ tốt", "#059669" if summary.get('cqi',0)>=95 else "#d97706"),
         create_pdf_card("Capacity & Load", "PRB DL Utilization", f"{summary.get('prb',0):.2f}%", "<=35.00%", "Dồi dào", "#059669" if summary.get('prb',0)<=35 else "#dc2626"),
         create_pdf_card("Mobility", "Intra-freq HO SR", f"{summary.get('intra',0):.2f}%", ">=98.00%", "Mượt mà", "#059669" if summary.get('intra',0)>=98 else "#d97706"),
-        create_pdf_card("Mobility", "Inter-RAT HOSR", f"{summary.get('irat',0):.2f}%", ">=95.00%", "Cần theo dõi", "#059669" if summary.get('irat',0)>=95 else "#d97706"),
+        create_pdf_card("Mobility", "Inter-freq HO SR", f"{summary.get('inter',0):.2f}%", ">=98.00%", "Chuyển giao liên tần", "#059669" if summary.get('inter',0)>=98 else "#d97706"),
         create_pdf_card("Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">=95.00%", "Đảm bảo", "#059669" if summary.get('srvcc',0)>=95 else "#d97706"),
     ]
 
@@ -767,7 +767,7 @@ s_ul = filtered_df.get("UL_Throughput_Mbps", pd.Series([0]))
 s_cqi = filtered_df.get("CQI_4G", pd.Series([0]))
 s_prb = filtered_df.get("Resource Block Untilizing Rate Downlink (%)", pd.Series([0]))
 s_intra = filtered_df.get("Intra-frequency HO (%)", pd.Series([0]))
-s_irat = filtered_df.get("Inter-RAT HOSR (LTE to WCDMA) (%)", pd.Series([0]))
+s_inter = filtered_df.get("Inter-frequency HO (%)", pd.Series([0]))
 s_srvcc = filtered_df.get("SRVCC Success Rate (LTE to WCDMA)", pd.Series([0]))
 
 # HÀNG 1 (5 CỘT)
@@ -801,9 +801,9 @@ with c3:
     v = s_intra.mean()
     render_card("Mobility", "Intra-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_intra.min():.1f}%", f"{s_intra.max():.1f}%", "Chuyển giao mượt", "WARNING" if v < 98.0 else "GOOD")
 with c4:
-    # KPI Handover -> Lấy trung bình thường (mean)
-    v = s_irat.mean()
-    render_card("Mobility", "Inter-RAT HOSR", f"{v:.2f}%", ">=95.0%", f"{s_irat.min():.1f}%", f"{s_irat.max():.1f}%", "Chỉnh Event B2", "WARNING" if v < 95.0 else "GOOD")
+    # THAY THẾ Inter-RAT HOSR BẰNG Inter-freq HO SR -> Lấy trung bình thường (mean)
+    v = s_inter.mean()
+    render_card("Mobility", "Inter-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_inter.min():.1f}%", f"{s_inter.max():.1f}%", "Chuyển giao liên tần", "WARNING" if v < 98.0 else "GOOD")
 with c5:
     # KPI Handover/SRVCC -> Lấy trung bình thường (mean)
     v = s_srvcc.mean()
@@ -884,6 +884,7 @@ kpi_dict = {
     "Service Drop Rate (%)": "Service Drop (all service)",
     "Call Setup SR (%)": "Call Setup Success Rate",
     "Intra-Freq HO SR (%)": "Intra-frequency HO (%)",
+    "Inter-Freq HO SR (%)": "Inter-frequency HO (%)",
     "Inter-RAT HOSR (%)": "Inter-RAT HOSR (LTE to WCDMA) (%)",
     "VoLTE Traffic (Erl)": "VoLTE Traffic (Erl)",
     "VoLTE Drop Rate (%)": "Call Drop Rate (VoLTE)",
@@ -1076,11 +1077,11 @@ if cell_col:
         "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
         "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
         "intra": s_intra.mean(),
-        "irat": s_irat.mean(),
+        "inter": s_inter.mean(),
         "srvcc": s_srvcc.mean(),
     }
 
-    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF (VoLTE KPI dùng trọng số VoLTE Traffic Erl)
+    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
     c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).apply(
         lambda g: pd.Series({
             "Total Data Traffic Volume (GB)": g["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in g else 0,
