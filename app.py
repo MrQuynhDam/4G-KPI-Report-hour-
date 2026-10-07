@@ -171,7 +171,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     h2_style = ParagraphStyle("H2", fontName=FONT_NAME, fontSize=11, textColor=colors.HexColor("#1e293b"), spaceBefore=8, spaceAfter=4)
     norm_style = ParagraphStyle("N", fontName=FONT_NAME, fontSize=8.5, textColor=colors.HexColor("#334155"))
 
-    now_str = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
+    now_str = pd.Timestamp.now().strftime("%d/%m/%Y")
 
     story.append(Paragraph("BÁO CÁO ĐÁNH GIÁ CHẤT LƯỢNG MẠNG 4G", t_style))
     story.append(Paragraph(f"Thời gian xuất báo cáo: {now_str} | RNOC2", norm_style))
