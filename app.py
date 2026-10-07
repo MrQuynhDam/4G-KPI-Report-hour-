@@ -742,7 +742,7 @@ def render_card(cat, title, val, tgt, min_v, max_v, remark, stt="good"):
 
 
 def calc_weighted_avg(df_in, kpi_col, weight_col="Total Data Traffic Volume (GB)"):
-    """Tính trung bình có trọng số Traffic Volume (GB)"""
+    """Tính trung bình có trọng số theo Traffic (mặc định là Total Data Traffic Volume (GB))"""
     if kpi_col not in df_in.columns:
         return 0.0
     
@@ -797,13 +797,16 @@ with c2:
     v = calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)")
     render_card("Capacity & Load", "PRB Utilization DL", f"{v:.2f}%", "<=35.0%", f"{s_prb.min():.1f}%", f"{s_prb.max():.1f}%", "Dồi dào dự phòng", "EXCELLENT" if v <= 35.0 else "WARNING")
 with c3:
-    v = calc_weighted_avg(filtered_df, "Intra-frequency HO (%)")
+    # KPI Handover -> Lấy trung bình thường (mean)
+    v = s_intra.mean()
     render_card("Mobility", "Intra-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_intra.min():.1f}%", f"{s_intra.max():.1f}%", "Chuyển giao mượt", "WARNING" if v < 98.0 else "GOOD")
 with c4:
-    v = calc_weighted_avg(filtered_df, "Inter-RAT HOSR (LTE to WCDMA) (%)")
+    # KPI Handover -> Lấy trung bình thường (mean)
+    v = s_irat.mean()
     render_card("Mobility", "Inter-RAT HOSR", f"{v:.2f}%", ">=95.0%", f"{s_irat.min():.1f}%", f"{s_irat.max():.1f}%", "Chỉnh Event B2", "WARNING" if v < 95.0 else "GOOD")
 with c5:
-    v = calc_weighted_avg(filtered_df, "SRVCC Success Rate (LTE to WCDMA)")
+    # KPI Handover/SRVCC -> Lấy trung bình thường (mean)
+    v = s_srvcc.mean()
     render_card("SRVCC", "SRVCC Success Rate", f"{v:.2f}%", ">=95.0%", f"{s_srvcc.min():.1f}%", f"{s_srvcc.max():.1f}%", "Đảm bảo thoại 3G", "EXCELLENT" if v >= 95.0 else "WARNING")
 
 st.markdown("---")
@@ -1072,25 +1075,27 @@ if cell_col:
         "ul": calc_weighted_avg(filtered_df, "UL_Throughput_Mbps"),
         "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
         "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
-        "intra": calc_weighted_avg(filtered_df, "Intra-frequency HO (%)"),
-        "irat": calc_weighted_avg(filtered_df, "Inter-RAT HOSR (LTE to WCDMA) (%)"),
-        "srvcc": calc_weighted_avg(filtered_df, "SRVCC Success Rate (LTE to WCDMA)"),
+        "intra": s_intra.mean(),
+        "irat": s_irat.mean(),
+        "srvcc": s_srvcc.mean(),
     }
 
-    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
-    c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).agg({
-        "Total Data Traffic Volume (GB)": "sum",
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }).reset_index().sort_values(by="DateTime")
+    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF (VoLTE KPI dùng trọng số VoLTE Traffic Erl)
+    c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).apply(
+        lambda g: pd.Series({
+            "Total Data Traffic Volume (GB)": g["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in g else 0,
+            "DL_Throughput_Mbps": calc_weighted_avg(g, "DL_Throughput_Mbps"),
+            "UL_Throughput_Mbps": calc_weighted_avg(g, "UL_Throughput_Mbps"),
+            "Service Drop (all service)": calc_weighted_avg(g, "Service Drop (all service)"),
+            "Call Setup Success Rate": calc_weighted_avg(g, "Call Setup Success Rate"),
+            "Intra-frequency HO (%)": g["Intra-frequency HO (%)"].mean() if "Intra-frequency HO (%)" in g else 0,
+            "Inter-frequency HO (%)": g["Inter-frequency HO (%)"].mean() if "Inter-frequency HO (%)" in g else 0,
+            "Resource Block Untilizing Rate Downlink (%)": calc_weighted_avg(g, "Resource Block Untilizing Rate Downlink (%)"),
+            "VoLTE E-RAB Call Setup Success Rate": calc_weighted_avg(g, "VoLTE E-RAB Call Setup Success Rate", weight_col="VoLTE Traffic (Erl)"),
+            "Call Drop Rate (VoLTE)": calc_weighted_avg(g, "Call Drop Rate (VoLTE)", weight_col="VoLTE Traffic (Erl)"),
+            "VoLTE Traffic (Erl)": g["VoLTE Traffic (Erl)"].sum() if "VoLTE Traffic (Erl)" in g else 0
+        })
+    ).reset_index().sort_values(by="DateTime")
     c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m %H:00")
 
     pdf_buf = generate_pdf_report(
