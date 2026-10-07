@@ -173,14 +173,14 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
     now_str = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
 
-    story.append(Paragraph("BÁO CÁO ĐÁNH GIÁ CHẤT LƯỢNG MẠNG 4G/LTE (EXECUTIVE REPORT)", t_style))
-    story.append(Paragraph(f"Thời gian xuất báo cáo: {now_str} | Trung tâm Tối ưu hóa Mạng RAN", norm_style))
+    story.append(Paragraph("BÁO CÁO ĐÁNH GIÁ CHẤT LƯỢNG MẠNG 4G", t_style))
+    story.append(Paragraph(f"Thời gian xuất báo cáo: {now_str} | RNOC2", norm_style))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#3b82f6"), spaceAfter=10))
 
     # ---------------------------------------------------------
     # MỤC I. 10 VISUAL KPI CARDS
     # ---------------------------------------------------------
-    story.append(Paragraph("I. BẢNG CARD KPI TỔNG QUAN (VISUAL KPI CARDS)", h2_style))
+    story.append(Paragraph("I. TỔNG QUAN KPI", h2_style))
     story.append(Spacer(1, 4))
 
     card_t_style = ParagraphStyle('CT', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor('#475569'), leading=9)
@@ -233,7 +233,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     # ---------------------------------------------------------
     # MỤC II. 6 CHARTS XU HƯỚNG - MỖI CHART 1 DÒNG ĐỘC LẬP
     # ---------------------------------------------------------
-    story.append(Paragraph("II. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY (HOURLY KPI CHARTS)", h2_style))
+    story.append(Paragraph("II. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
     story.append(Spacer(1, 4))
 
     if not hourly_trend_df.empty:
@@ -940,7 +940,7 @@ if cell_col:
     top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
 
     st.markdown("---")
-    st.markdown("### 📄 PDF Report Export)")
+    st.markdown("### 📄 PDF Report Export")
     summary_data = {
         "tf": s_tf.sum(),
         "cssr": s_cssr.mean(),
