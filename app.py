@@ -985,7 +985,7 @@ if cell_col:
     )
 
     st.download_button(
-        label="📑 Tải Báo Cáo PDF...)",
+        label="📑 Tải Báo Cáo PDF...",
         data=pdf_buf,
         file_name="4G_Network_Health.pdf",
         mime="application/pdf",
