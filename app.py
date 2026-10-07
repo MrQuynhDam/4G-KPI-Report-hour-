@@ -268,7 +268,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                               line2_vals=None, line2_lbl=None, line2_color=None, 
                               bar_lbl="Traffic (GB)", is_bar_volte=False):
             img_b = io.BytesIO()
-            fig, ax = plt.subplots(figsize=(11, 2.2), dpi=150)
+            fig, ax = plt.subplots(figsize=(11, 4.45), dpi=150)
 
             # Draw Bar
             b_color = '#a855f7' if is_bar_volte else '#3b82f6'
