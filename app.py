@@ -6,7 +6,6 @@ import unicodedata
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import streamlit as st
 
@@ -161,7 +160,7 @@ def get_sample_file_bytes():
     return None, None
 
 
-def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho):
+def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None):
     """Xuất PDF Chuẩn tiếng Việt - Visual Cards, 6 Charts Xu Hướng (Mỗi chart 1 dòng), Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
@@ -205,19 +204,19 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         return c_tbl
 
     cards_row1 = [
-        create_pdf_card("Data Traffic", "Total Data Traffic", f"{summary.get('tf',0):,.0f} GB", "N/A", "Tải tốt", "#2563eb"),
-        create_pdf_card("Accessibility", "Call Setup SR", f"{summary.get('cssr',0):.2f}%", ">=99.00%", "Rất tốt", "#059669" if summary.get('cssr',0)>=99.0 else "#d97706"),
-        create_pdf_card("Retainability", "Service Drop Rate", f"{summary.get('drop',0):.3f}%", "<=1.000%", "Ổn định", "#059669" if summary.get('drop',0)<=1.0 else "#dc2626"),
-        create_pdf_card("Integrity", "User DL Throughput", f"{summary.get('dl',0):.2f} M", ">20.0M", "Đạt chuẩn", "#059669" if summary.get('dl',0)>20 else "#d97706"),
-        create_pdf_card("Integrity", "User UL Throughput", f"{summary.get('ul',0):.2f} M", ">=1.5M", "Đạt chuẩn", "#059669" if summary.get('ul',0)>=1.5 else "#d97706"),
+    create_pdf_card("Data Traffic", "Total Data Traffic", f"{summary.get('tf',0):,.0f} GB", "N/A", "Tải tốt", "#2563eb"),
+    create_pdf_card("Accessibility", "Call Setup SR", f"{summary.get('cssr',0):.2f}%", ">=99.00%", "Rất tốt", "#059669" if summary.get('cssr',0)>=99.0 else "#d97706"),
+    create_pdf_card("Retainability", "Service Drop Rate", f"{summary.get('drop',0):.3f}%", "<=1.000%", "Ổn định", "#059669" if summary.get('drop',0)<=1.0 else "#dc2626"),
+    create_pdf_card("Integrity", "User DL Throughput", f"{summary.get('dl',0):.2f} M", ">20.0M", "Đạt chuẩn", "#059669" if summary.get('dl',0)>20 else "#d97706"),
+    create_pdf_card("Integrity", "User UL Throughput", f"{summary.get('ul',0):.2f} M", ">=1.5M", "Đạt chuẩn", "#059669" if summary.get('ul',0)>=1.5 else "#d97706"),
     ]
 
     cards_row2 = [
-        create_pdf_card("Radio Quality", "CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=95.00%", "Vùng phủ tốt", "#059669" if summary.get('cqi',0)>=95 else "#d97706"),
-        create_pdf_card("Capacity & Load", "PRB DL Utilization", f"{summary.get('prb',0):.2f}%", "<=35.00%", "Dồi dào", "#059669" if summary.get('prb',0)<=35 else "#dc2626"),
-        create_pdf_card("Mobility", "Intra-freq HO SR", f"{summary.get('intra',0):.2f}%", ">=98.00%", "Mượt mà", "#059669" if summary.get('intra',0)>=98 else "#d97706"),
-        create_pdf_card("Mobility", "Inter-RAT HOSR", f"{summary.get('irat',0):.2f}%", ">=95.00%", "Cần theo dõi", "#059669" if summary.get('irat',0)>=95 else "#d97706"),
-        create_pdf_card("Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">=95.00%", "Đảm bảo", "#059669" if summary.get('srvcc',0)>=95 else "#d97706"),
+    create_pdf_card("Radio Quality", "CQI 4G Index", f"{summary.get('cqi',0):.2f}%", ">=95.00%", "Vùng phủ tốt", "#059669" if summary.get('cqi',0)>=95 else "#d97706"),
+    create_pdf_card("Capacity & Load", "PRB DL Utilization", f"{summary.get('prb',0):.2f}%", "<=35.00%", "Dồi dào", "#059669" if summary.get('prb',0)<=35 else "#dc2626"),
+    create_pdf_card("Mobility", "Intra-freq HO SR", f"{summary.get('intra',0):.2f}%", ">=98.00%", "Mượt mà", "#059669" if summary.get('intra',0)>=98 else "#d97706"),
+    create_pdf_card("Mobility", "Inter-RAT HOSR", f"{summary.get('irat',0):.2f}%", ">=95.00%", "Cần theo dõi", "#059669" if summary.get('irat',0)>=95 else "#d97706"),
+    create_pdf_card("Voice Continuity", "SRVCC Success Rate", f"{summary.get('srvcc',0):.2f}%", ">=95.00%", "Đảm bảo", "#059669" if summary.get('srvcc',0)>=95 else "#d97706"),
     ]
 
     grid_cards = Table([cards_row1, cards_row2], colWidths=[150]*5)
@@ -229,7 +228,57 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ('RIGHTPADDING', (0,0), (-1,-1), 1),
     ]))
     story.append(grid_cards)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
+
+    # ---------------------------------------------------------
+    # MỤC I.5. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
+    # ---------------------------------------------------------
+    if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
+        story.append(Paragraph("I.5. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
+        story.append(Spacer(1, 2))
+        
+        fb_img_buf = io.BytesIO()
+        fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.8), dpi=150)
+        
+        # 1. Chart Cell count & percentage
+        if fb_cell_counts is not None and not fb_cell_counts.empty:
+            fb_labels = fb_cell_counts["Freqband"].tolist()
+            fb_sizes = fb_cell_counts["Số lượng Cell"].tolist()
+            fb_colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
+            
+            wedges, texts, autotexts = ax1_fb.pie(
+                fb_sizes, labels=fb_labels, autopct='%1.1f%%', startangle=90,
+                colors=fb_colors[:len(fb_labels)],
+                wedgeprops=dict(width=0.45, edgecolor='white')
+            )
+            for t_idx, t in enumerate(texts):
+                t.set_fontsize(7.5)
+            for at in autotexts:
+                at.set_fontsize(7)
+                at.set_weight('bold')
+            ax1_fb.set_title("Số lượng & Tỷ lệ Cell theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
+        
+        # 2. Chart Traffic Volume per Freqband
+        if fb_tf_df is not None and not fb_tf_df.empty:
+            fb_bands = fb_tf_df["Freqband"].tolist()
+            fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
+            fb_bars = ax2_fb.bar(fb_bands, fb_traffics, color='#0284c7', width=0.45, alpha=0.85)
+            ax2_fb.set_title("Tổng Traffic Volume (GB) theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
+            ax2_fb.set_ylabel("Traffic (GB)", fontsize=7.5)
+            ax2_fb.tick_params(axis='both', labelsize=7)
+            ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
+            
+            max_tf = max(fb_traffics) if fb_traffics else 1
+            for bar in fb_bars:
+                yval = bar.get_height()
+                ax2_fb.text(bar.get_x() + bar.get_width()/2.0, yval + (max_tf * 0.02), f"{yval:,.1f} GB", ha='center', va='bottom', fontsize=6.5, fontweight='bold')
+
+        plt.tight_layout()
+        plt.savefig(fb_img_buf, format='png', dpi=150)
+        plt.close()
+        fb_img_buf.seek(0)
+        story.append(Image(fb_img_buf, width=740, height=188))
+        story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------
     # MỤC II. 6 CHARTS XU HƯỚNG - MỖI CHART 1 DÒNG ĐỘC LẬP
@@ -265,16 +314,21 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         volte_drop_vals = df_chart.get("Call Drop Rate (VoLTE)", pd.Series([0]*n_pts)).values
         volte_tf_vals = df_chart.get("VoLTE Traffic (Erl)", pd.Series([0]*n_pts)).values
 
+        # ---------------------------------------------------------
+        # KHỐI VẼ CHART DÙNG TRONG BÁO CÁO PDF
+        # ---------------------------------------------------------
         def make_single_chart(chart_title, bar_vals, line1_vals, line1_lbl, line1_color, 
                               line2_vals=None, line2_lbl=None, line2_color=None, 
                               bar_lbl="Traffic (GB)", is_bar_volte=False):
             img_b = io.BytesIO()
             fig, ax = plt.subplots(figsize=(11, 3.568), dpi=150)
 
+            # X-ticks formatting
             ax.set_xticks(range(0, n_pts, step))
             ax.set_xticklabels([x_labels[i] for i in range(0, n_pts, step)], rotation=30 if n_pts > 15 else 0, ha='right' if n_pts > 15 else 'center', fontsize=6)
             ax.grid(True, linestyle='--', alpha=0.25)
 
+            # CHỈ VẼ CỘT BAR TRAFFIC NẾU BAR_VALS KHÁC NONE
             if bar_vals is not None:
                 b_color = '#a855f7' if is_bar_volte else '#3b82f6'
                 ax.bar(range(n_pts), bar_vals, color=b_color, alpha=0.45, label=bar_lbl, width=0.8)
@@ -282,11 +336,13 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 ax.tick_params(axis='y', labelcolor='#1d4ed8' if not is_bar_volte else '#7e22ce', labelsize=6.5)
 
             if line2_vals is None:
+                # Biểu đồ 1 Line KPI + 1 Bar Traffic
                 ax_t = ax.twinx() if bar_vals is not None else ax
                 ax_t.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax_t.set_ylabel(line1_lbl, color=line1_color, fontweight='bold', fontsize=7.5)
                 ax_t.tick_params(axis='y', labelcolor=line1_color, labelsize=6.5)
             else:
+                # Biểu đồ 2 Lines (Intra & Inter HO) - HOÀN TOÀN KHÔNG VẼ TRAFFIC
                 ax.plot(range(n_pts), line1_vals, color=line1_color, marker='o', markersize=2.5, linewidth=1.4, label=line1_lbl)
                 ax.plot(range(n_pts), line2_vals, color=line2_color, marker='s', markersize=2.5, linewidth=1.4, linestyle='--', label=line2_lbl)
                 ax.set_ylabel("Handover SR (%)", color='#0f172a', fontweight='bold', fontsize=7.5)
@@ -300,30 +356,36 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             img_b.seek(0)
             return Image(img_b, width=740, height=240)
 
+        # Chart 1: CSSR & Data Traffic
         c1_img = make_single_chart("Chart 1: Tỷ lệ CSSR (%) & Data Traffic (GB)", tf_vals, cssr_vals, "CSSR (%)", "#10b981")
         story.append(c1_img)
         story.append(Spacer(1, 8))
 
+        # Chart 2: DCR & Data Traffic
         c2_img = make_single_chart("Chart 2: Tỷ lệ DCR (%) & Data Traffic (GB)", tf_vals, drop_vals, "DCR (%)", "#ef4444")
         story.append(c2_img)
         story.append(Spacer(1, 8))
 
         story.append(PageBreak())
 
+        # Chart 3: Download Throughput & Data Traffic
         c3_img = make_single_chart("Chart 3: Download Throughput (Mbps) & Data Traffic (GB)", tf_vals, dl_vals, "DL Thrp (Mbps)", "#8b5cf6")
         story.append(c3_img)
         story.append(Spacer(1, 8))
 
+        # Chart 4: Chỉ so sánh Intra-freq HO (%) & Inter-freq HO (%) - TRUYỀN NONE CHO BAR_VALS
         c4_img = make_single_chart("Chart 4: So sánh Intra-freq HO (%) & Inter-freq HO (%)", None, intra_vals, "Intra-freq HO (%)", "#059669", line2_vals=inter_vals, line2_lbl="Inter-freq HO (%)", line2_color="#d97706")
         story.append(c4_img)
         story.append(Spacer(1, 8))
 
         story.append(PageBreak())
 
+        # Chart 5: VoLTE CSSR & VoLTE Traffic
         c5_img = make_single_chart("Chart 5: VoLTE CSSR (%) & VoLTE Traffic (Erl)", volte_tf_vals, volte_cssr_vals, "VoLTE CSSR (%)", "#10b981", bar_lbl="VoLTE Traffic (Erl)", is_bar_volte=True)
         story.append(c5_img)
         story.append(Spacer(1, 8))
 
+        # Chart 6: VoLTE DCR & VoLTE Traffic
         c6_img = make_single_chart("Chart 6: VoLTE DCR (%) & VoLTE Traffic (Erl)", volte_tf_vals, volte_drop_vals, "VoLTE DCR (%)", "#dc2626", bar_lbl="VoLTE Traffic (Erl)", is_bar_volte=True)
         story.append(c6_img)
         story.append(Spacer(1, 10))
@@ -344,7 +406,8 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not top10_cells.empty:
         story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
         story.append(Spacer(1, 2))
-        tr_sub = top10_cells.head(10)
+        tr_cols = [c for c in top10_cells.columns if c in ["Site Name", "Tên đối tượng", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:5]
+        tr_sub = top10_cells[tr_cols].head(10)
 
         tr_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -355,11 +418,11 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in tr_sub.iterrows():
             tr_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}"),
-                p_cell(f"{row.get('DL_Throughput_Mbps', 0):.2f}"),
-                p_cell(f"{row.get('Resource Block Untilizing Rate Downlink (%)', 0):.2f}")
+                p_cell(row.iloc[0]),
+                p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:,.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}"),
+                p_cell(f"{row.iloc[4]:.2f}")
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
@@ -376,7 +439,8 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not top10_sites.empty:
         story.append(Paragraph("<b>2. Top 10 Site có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
         story.append(Spacer(1, 2))
-        ts_sub = top10_sites.head(10)
+        ts_cols = [c for c in top10_sites.columns if c in ["Site Name", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:4]
+        ts_sub = top10_sites[ts_cols].head(10)
 
         ts_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -386,10 +450,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in ts_sub.iterrows():
             ts_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}"),
-                p_cell(f"{row.get('DL_Throughput_Mbps', 0):.2f}"),
-                p_cell(f"{row.get('Resource Block Untilizing Rate Downlink (%)', 0):.2f}")
+                p_cell(row.iloc[0]),
+                p_cell(f"{row.iloc[1]:,.2f}"),
+                p_cell(f"{row.iloc[2]:.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}")
             ])
 
         t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
@@ -559,19 +623,6 @@ def process_data(file_input):
     else:
         df["Hour"] = df["DateTime"].dt.hour
 
-    # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CỘT CELLNAME (TÊN ĐỐI TƯỢNG)
-    cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
-    if cell_col_name:
-        def extract_freqband(cell_name):
-            s = str(cell_name).strip()
-            if len(s) >= 11:
-                char = s[10] # Ký tự thứ 11 (index 10)
-                return f"F{char}" if not char.startswith("F") else char
-            return "N/A"
-        df["Freqband"] = df[cell_col_name].apply(extract_freqband)
-    else:
-        df["Freqband"] = "N/A"
-
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Uplink Average Throughput (Kbps)",
@@ -638,10 +689,12 @@ else:
 st.sidebar.subheader("📅 Chọn Ngày")
 if "Date" in df.columns:
     all_dates = sorted(df["Date"].dropna().unique().tolist())
+    
+    # Sử dụng multiselect cho phần chọn ngày
     sel_dates = st.sidebar.multiselect(
         "Chọn Ngày",
         options=all_dates,
-        default=all_dates,
+        default=all_dates,  # Mặc định chọn tất cả
         label_visibility="collapsed"
     )
 else:
@@ -653,12 +706,15 @@ site_col = "Site Name" if "Site Name" in df.columns else None
 sel_sites = []
 if site_col:
     all_sites = sorted(df[site_col].dropna().unique().tolist())
+    
+    # Sử dụng multiselect thay vì vòng lặp checkbox
     sel_sites = st.sidebar.multiselect(
         "Chọn Site",
         options=all_sites,
-        default=all_sites,
-        label_visibility="collapsed"
+        default=all_sites,  # Mặc định chọn tất cả giống logic ban đầu của bạn
+        label_visibility="collapsed"  # Ẩn nhãn thừa vì phía trên đã có subheader
     )
+    
     filtered_df = df[(df["Date"].isin(sel_dates)) & (df[site_col].isin(sel_sites))]
 else:
     filtered_df = df[df["Date"].isin(sel_dates)]
@@ -668,7 +724,7 @@ if filtered_df.empty:
     st.stop()
 
 # ---------------------------------------------------------
-# 5. HEADER & CARDS
+# 5. HEADER & CARDS (NHỎ GỌN CHUẨN 2 HÀNG X 5 CỘT)
 # ---------------------------------------------------------
 cell_col = "Tên đối tượng" if "Tên đối tượng" in df.columns else None
 num_cells = filtered_df[cell_col].nunique() if cell_col else 0
@@ -739,63 +795,6 @@ with c4:
 with c5:
     v = s_srvcc.mean()
     render_card("SRVCC", "SRVCC Success Rate", f"{v:.2f}%", ">=95.0%", f"{s_srvcc.min():.1f}%", f"{s_srvcc.max():.1f}%", "Đảm bảo thoại 3G", "EXCELLENT" if v >= 95.0 else "WARNING")
-
-st.markdown("---")
-
-# ---------------------------------------------------------
-# 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND (NGAY DƯỚI CARDS)
-# ---------------------------------------------------------
-st.subheader("📊 Thống Kê Phân PB Cell & Traffic Theo Freqband")
-
-fb_col1, fb_col2 = st.columns(2)
-
-if cell_col and "Freqband" in filtered_df.columns:
-    # 1. Thống kê Số lượng Cell theo Freqband (Dựa trên Cell duy nhất)
-    cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
-    fb_cell_counts = cell_fb_df["Freqband"].value_counts().reset_index()
-    fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
-    fb_cell_counts = fb_cell_counts.sort_values(by="Freqband")
-
-    fig_fb_cell = px.pie(
-        fb_cell_counts,
-        names="Freqband",
-        values="Số lượng Cell",
-        title="<b>Tỷ lệ & Số lượng Cell theo Freqband</b>",
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Pastel
-    )
-    fig_fb_cell.update_traces(textinfo="label+value+percent", textfont_size=12)
-    fig_fb_cell.update_layout(template="plotly_dark", height=320, margin=dict(l=20, r=20, t=40, b=20))
-
-    with fb_col1:
-        st.plotly_chart(fig_fb_cell, use_container_width=True)
-
-    # 2. Thống kê Tổng Traffic theo Freqband
-    if "Total Data Traffic Volume (GB)" in filtered_df.columns:
-        fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
-        fb_tf_df = fb_tf_df.sort_values(by="Freqband")
-
-        fig_fb_tf = px.bar(
-            fb_tf_df,
-            x="Freqband",
-            y="Total Data Traffic Volume (GB)",
-            text="Total Data Traffic Volume (GB)",
-            title="<b>Tổng Traffic Volume (GB) theo Freqband</b>",
-            color="Freqband",
-            color_discrete_sequence=px.colors.qualitative.Set2
-        )
-        fig_fb_tf.update_traces(texttemplate='%{text:,.1f} GB', textposition='outside')
-        fig_fb_tf.update_layout(
-            template="plotly_dark",
-            height=320,
-            showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20),
-            yaxis_title="Traffic Volume (GB)",
-            xaxis_title="Freqband"
-        )
-
-        with fb_col2:
-            st.plotly_chart(fig_fb_tf, use_container_width=True)
 
 st.markdown("---")
 
@@ -1032,7 +1031,9 @@ if cell_col:
         worst10_cssr,
         worst10_dcr,
         worst10_intra_ho,
-        worst10_inter_ho
+        worst10_inter_ho,
+        fb_cell_counts if 'fb_cell_counts' in locals() else None,
+        fb_tf_df if 'fb_tf_df' in locals() else None
     )
 
     st.download_button(
