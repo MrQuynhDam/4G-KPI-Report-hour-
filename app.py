@@ -332,11 +332,11 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in tr_sub.iterrows():
             tr_data.append([
-                p_cell(row[0]),
-                p_cell(row[1]),
-                p_cell(f"{row[2]:,.2f}"),
-                p_cell(f"{row[3]:.2f}"),
-                p_cell(f"{row[4]:.2f}")
+                p_cell(row.iloc[0]),
+                p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:,.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}"),
+                p_cell(f"{row.iloc[4]:.2f}")
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
@@ -364,10 +364,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in ts_sub.iterrows():
             ts_data.append([
-                p_cell(row[0]),
-                p_cell(f"{row[1]:,.2f}"),
-                p_cell(f"{row[2]:.2f}"),
-                p_cell(f"{row[3]:.2f}")
+                p_cell(row.iloc[0]),
+                p_cell(f"{row.iloc[1]:,.2f}"),
+                p_cell(f"{row.iloc[2]:.2f}"),
+                p_cell(f"{row.iloc[3]:.2f}")
             ])
 
         t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
@@ -405,10 +405,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row[0]), p_cell(row[1]),
-                p_cell(f"{row[2]:.2f}%" if isinstance(row[2], float) else str(row[2])),
-                p_cell(f"{row[3]:.3f}%" if isinstance(row[3], float) else str(row[3])),
-                p_cell(f"{row[4]:,.1f}" if isinstance(row[4], float) else str(row[4]))
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.3f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
             ])
         t_cssr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_cssr.setStyle(TableStyle([
@@ -437,10 +437,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row[0]), p_cell(row[1]),
-                p_cell(f"{row[2]:.3f}%" if isinstance(row[2], float) else str(row[2])),
-                p_cell(f"{row[3]:.2f}%" if isinstance(row[3], float) else str(row[3])),
-                p_cell(f"{row[4]:,.1f}" if isinstance(row[4], float) else str(row[4]))
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.3f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
             ])
         t_dcr = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_dcr.setStyle(TableStyle([
@@ -469,10 +469,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
-                p_cell(row[0]), p_cell(row[1]),
-                p_cell(f"{row[2]:.2f}%" if isinstance(row[2], float) else str(row[2])),
-                p_cell(f"{row[3]:.2f}%" if isinstance(row[3], float) else str(row[3])),
-                p_cell(f"{row[4]:,.1f}" if isinstance(row[4], float) else str(row[4]))
+                p_cell(row.iloc[0]), p_cell(row.iloc[1]),
+                p_cell(f"{row.iloc[2]:.2f}%" if isinstance(row.iloc[2], float) else str(row.iloc[2])),
+                p_cell(f"{row.iloc[3]:.2f}%" if isinstance(row.iloc[3], float) else str(row.iloc[3])),
+                p_cell(f"{row.iloc[4]:,.1f}" if isinstance(row.iloc[4], float) else str(row.iloc[4]))
             ])
         t_ho = Table(w_data, colWidths=[130, 180, 110, 110, 110])
         t_ho.setStyle(TableStyle([
