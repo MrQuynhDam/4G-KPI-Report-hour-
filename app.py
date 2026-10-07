@@ -1,5 +1,6 @@
 import io
 import os
+import urllib.request
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -9,14 +10,12 @@ import streamlit as st
 import matplotlib
 import matplotlib.pyplot as plt
 
-matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Liberation Sans']
-matplotlib.rcParams['axes.unicode_minus'] = False
-
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.fonts import addMapping
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
@@ -29,19 +28,72 @@ from reportlab.platypus import (
 )
 
 # ---------------------------------------------------------
-# REGISTRATION OF VIETNAMESE UNICODE FONTS FOR REPORTLAB
+# DYNAMIC VIETNAMESE UNICODE FONT REGISTRATION (BULLETPROOF)
 # ---------------------------------------------------------
-FONT_REG = "Helvetica"
-FONT_BOLD = "Helvetica-Bold"
+def setup_vietnamese_fonts():
+    """Tự động tìm kiếm font tiếng Việt trên hệ thống hoặc tải về nếu thiếu."""
+    local_reg = "DejaVuSans.ttf"
+    local_bold = "DejaVuSans-Bold.ttf"
+    
+    if os.path.exists(local_reg) and os.path.exists(local_bold):
+        return local_reg, local_bold, "DejaVu Sans"
 
-dejavu_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-dejavu_bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    search_dirs = [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+        "C:\Windows\Fonts",
+    ]
+    
+    candidates = [
+        ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVu Sans"),
+        ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "Liberation Sans"),
+        ("arial.ttf", "arialbd.ttf", "Arial"),
+        ("Roboto-Regular.ttf", "Roboto-Bold.ttf", "Roboto"),
+    ]
 
-if os.path.exists(dejavu_path) and os.path.exists(dejavu_bold_path):
-    pdfmetrics.registerFont(TTFont("DejaVuSans", dejavu_path))
-    pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", dejavu_bold_path))
-    FONT_REG = "DejaVuSans"
-    FONT_BOLD = "DejaVuSans-Bold"
+    for s_dir in search_dirs:
+        if os.path.exists(s_dir):
+            for root, dirs, files in os.walk(s_dir):
+                file_map = {f.lower(): f for f in files}
+                for reg_name, bold_name, family in candidates:
+                    if reg_name.lower() in file_map and bold_name.lower() in file_map:
+                        return (
+                            os.path.join(root, file_map[reg_name.lower()]),
+                            os.path.join(root, file_map[bold_name.lower()]),
+                            family,
+                        )
+
+    # Nếu không tìm thấy font hệ thống, tải trực tiếp DejaVuSans
+    url_reg = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans.ttf"
+    url_bold = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf"
+    try:
+        urllib.request.urlretrieve(url_reg, local_reg)
+        urllib.request.urlretrieve(url_bold, local_bold)
+        return local_reg, local_bold, "DejaVu Sans"
+    except Exception:
+        return None, None, "sans-serif"
+
+
+font_reg_path, font_bold_path, font_family_name = setup_vietnamese_fonts()
+
+FONT_NAME = "VietFont"
+FONT_NAME_BOLD = "VietFont-Bold"
+
+if font_reg_path and font_bold_path:
+    pdfmetrics.registerFont(TTFont(FONT_NAME, font_reg_path))
+    pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, font_bold_path))
+    
+    # Đăng ký Family Mapping để thẻ <b>, <i> không bị nhảy về Helvetica!
+    addMapping(FONT_NAME, 0, 0, FONT_NAME)
+    addMapping(FONT_NAME, 1, 0, FONT_NAME_BOLD)
+    addMapping(FONT_NAME, 0, 1, FONT_NAME)
+    addMapping(FONT_NAME, 1, 1, FONT_NAME_BOLD)
+
+# Matplotlib Unicode Setup
+matplotlib.rcParams["font.sans-serif"] = [font_family_name, "DejaVu Sans", "Liberation Sans", "Arial"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 # ---------------------------------------------------------
 # 1. CONFIG & STYLING
@@ -124,16 +176,15 @@ def get_sample_csv():
 
 
 def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_ho):
-    """Xuat PDF Chuẩn tiếng Việt - Card KPI, 5 Charts Xu Hướng, Top 10 Site/Cell & Worst 10 CSSR/DCR/Handover"""
+    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, 5 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
     
-    # Base Styles with Unicode Font
-    styles = getSampleStyleSheet()
-    t_style = ParagraphStyle("T", fontName=FONT_BOLD, fontSize=16, textColor=colors.HexColor("#0f172a"), spaceAfter=4)
-    h2_style = ParagraphStyle("H2", fontName=FONT_BOLD, fontSize=11, textColor=colors.HexColor("#1e293b"), spaceBefore=8, spaceAfter=4)
-    norm_style = ParagraphStyle("N", fontName=FONT_REG, fontSize=8.5, textColor=colors.HexColor("#334155"))
+    # Base Styles with Registered Unicode Font
+    t_style = ParagraphStyle("T", fontName=FONT_NAME, fontSize=16, textColor=colors.HexColor("#0f172a"), spaceAfter=4)
+    h2_style = ParagraphStyle("H2", fontName=FONT_NAME, fontSize=11, textColor=colors.HexColor("#1e293b"), spaceBefore=8, spaceAfter=4)
+    norm_style = ParagraphStyle("N", fontName=FONT_NAME, fontSize=8.5, textColor=colors.HexColor("#334155"))
 
     now_str = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
 
@@ -147,9 +198,9 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph("I. BẢNG CARD KPI TỔNG QUAN (VISUAL KPI CARDS)", h2_style))
     story.append(Spacer(1, 4))
 
-    card_t_style = ParagraphStyle('CT', fontName=FONT_BOLD, fontSize=7.5, textColor=colors.HexColor('#475569'), leading=9)
-    card_v_style = ParagraphStyle('CV', fontName=FONT_BOLD, fontSize=13, textColor=colors.HexColor('#0f172a'), leading=15)
-    card_s_style = ParagraphStyle('CS', fontName=FONT_REG, fontSize=6.5, textColor=colors.HexColor('#64748b'), leading=8)
+    card_t_style = ParagraphStyle('CT', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor('#475569'), leading=9)
+    card_v_style = ParagraphStyle('CV', fontName=FONT_NAME, fontSize=13, textColor=colors.HexColor('#0f172a'), leading=15)
+    card_s_style = ParagraphStyle('CS', fontName=FONT_NAME, fontSize=6.5, textColor=colors.HexColor('#64748b'), leading=8)
 
     def create_pdf_card(cat, title, val, target, remark, color_hex="#10b981"):
         p_t = Paragraph(f"<b>{cat.upper()}</b><br/>{title}", card_t_style)
@@ -311,11 +362,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph("III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
     story.append(Spacer(1, 4))
 
-    # Helper function for Paragraph Table Cells to support UTF-8 wrap cleanly
     def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
-        fn = FONT_BOLD if is_bold else FONT_REG
-        p_st = ParagraphStyle('PC', fontName=fn, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
-        return Paragraph(str(text), p_st)
+        p_st = ParagraphStyle('PC', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
+        txt = f"<b>{text}</b>" if is_bold else str(text)
+        return Paragraph(txt, p_st)
 
     if not top10_cells.empty:
         story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
@@ -864,12 +914,10 @@ if cell_col:
     st.markdown(f"**Danh sách Top {top_n_worst} Worst Cells theo `{sel_worst_kpi_lbl}`:**")
     st.dataframe(res_df, use_container_width=True)
 
-    # Lập sẵn Top 10 Worst CSSR, Worst DCR, Worst Handover để đóng gói trọn vẹn vào PDF
     worst10_cssr = cell_agg.sort_values(by="Call Setup Success Rate", ascending=True).head(10) if "Call Setup Success Rate" in cell_agg.columns else pd.DataFrame()
     worst10_dcr = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(10) if "Service Drop (all service)" in cell_agg.columns else pd.DataFrame()
     worst10_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
 
-    # Top 10 Sites va Cells cho PDF
     top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
     top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
 
