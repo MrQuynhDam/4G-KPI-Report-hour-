@@ -1,8 +1,5 @@
 import io
 import os
-import ssl
-import urllib.request
-import unicodedata
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -30,29 +27,27 @@ from reportlab.platypus import (
 )
 
 # ---------------------------------------------------------
-# DYNAMIC VIETNAMESE UNICODE FONT REGISTRATION (BULLETPROOF)
+# DYNAMIC VIETNAMESE UNICODE FONT REGISTRATION
 # ---------------------------------------------------------
 def setup_vietnamese_fonts():
-    """Tự động tìm kiếm font tiếng Việt trên hệ thống hoặc tải về từ CDN."""
+    """Ưu tiên đọc file DejaVuSans.ttf nằm cùng thư mục dự án."""
     local_reg = "DejaVuSans.ttf"
     local_bold = "DejaVuSans-Bold.ttf"
     
-    if os.path.exists(local_reg) and os.path.exists(local_bold):
-        return local_reg, local_bold, "DejaVu Sans"
+    # 1. Đọc file local nằm trong dự án (Khuyên dùng)
+    if os.path.exists(local_reg):
+        bold_path = local_bold if os.path.exists(local_bold) else local_reg
+        return local_reg, bold_path, "DejaVu Sans"
 
+    # 2. Tìm kiếm font hệ thống (Linux / Debian / Ubuntu)
     search_dirs = [
         "/usr/share/fonts",
         "/usr/local/share/fonts",
-        "/System/Library/Fonts",
-        "/Library/Fonts",
-        "C:\Windows\Fonts",
     ]
     
     candidates = [
         ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVu Sans"),
         ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "Liberation Sans"),
-        ("arial.ttf", "arialbd.ttf", "Arial"),
-        ("Roboto-Regular.ttf", "Roboto-Bold.ttf", "Roboto"),
     ]
 
     for s_dir in search_dirs:
@@ -60,40 +55,13 @@ def setup_vietnamese_fonts():
             for root, dirs, files in os.walk(s_dir):
                 file_map = {f.lower(): f for f in files}
                 for reg_name, bold_name, family in candidates:
-                    if reg_name.lower() in file_map and bold_name.lower() in file_map:
+                    if reg_name.lower() in file_map:
+                        b_path = os.path.join(root, file_map[bold_name.lower()]) if bold_name.lower() in file_map else os.path.join(root, file_map[reg_name.lower()])
                         return (
                             os.path.join(root, file_map[reg_name.lower()]),
-                            os.path.join(root, file_map[bold_name.lower()]),
+                            b_path,
                             family,
                         )
-
-    # Tải trực tiếp qua CDN với SSL & User-Agent
-    urls_reg = [
-        "https://cdnjs.cloudflare.com/ajax/libs/dejavu-sans/2.37/ttf/DejaVuSans.ttf",
-        "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans.ttf",
-    ]
-    urls_bold = [
-        "https://cdnjs.cloudflare.com/ajax/libs/dejavu-sans/2.37/ttf/DejaVuSans-Bold.ttf",
-        "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf",
-    ]
-
-    context = ssl._create_unverified_context()
-    headers = {'User-Agent': 'Mozilla/5.0'}
-
-    for u_reg, u_bold in zip(urls_reg, urls_bold):
-        try:
-            req_r = urllib.request.Request(u_reg, headers=headers)
-            with urllib.request.urlopen(req_r, context=context, timeout=5) as res, open(local_reg, 'wb') as f:
-                f.write(res.read())
-                
-            req_b = urllib.request.Request(u_bold, headers=headers)
-            with urllib.request.urlopen(req_b, context=context, timeout=5) as res, open(local_bold, 'wb') as f:
-                f.write(res.read())
-                
-            if os.path.exists(local_reg) and os.path.exists(local_bold):
-                return local_reg, local_bold, "DejaVu Sans"
-        except Exception:
-            pass
 
     return None, None, "Helvetica"
 
@@ -104,32 +72,21 @@ FONT_NAME = "VietFont"
 FONT_NAME_BOLD = "VietFont-Bold"
 
 if font_reg_path and font_bold_path:
-    try:
-        pdfmetrics.registerFont(TTFont(FONT_NAME, font_reg_path))
-        pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, font_bold_path))
-        
-        # Đăng ký mapping cho cả VietFont và VietFont-Bold để ReportLab không bao giờ báo lỗi ps2tt / ValueError!
-        addMapping(FONT_NAME, 0, 0, FONT_NAME)
-        addMapping(FONT_NAME, 1, 0, FONT_NAME_BOLD)
-        addMapping(FONT_NAME, 0, 1, FONT_NAME)
-        addMapping(FONT_NAME, 1, 1, FONT_NAME_BOLD)
+    pdfmetrics.registerFont(TTFont(FONT_NAME, font_reg_path))
+    pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, font_bold_path))
+    
+    addMapping(FONT_NAME, 0, 0, FONT_NAME)
+    addMapping(FONT_NAME, 1, 0, FONT_NAME_BOLD)
+    addMapping(FONT_NAME, 0, 1, FONT_NAME)
+    addMapping(FONT_NAME, 1, 1, FONT_NAME_BOLD)
 
-        addMapping(FONT_NAME_BOLD, 0, 0, FONT_NAME_BOLD)
-        addMapping(FONT_NAME_BOLD, 1, 0, FONT_NAME_BOLD)
-        addMapping(FONT_NAME_BOLD, 0, 1, FONT_NAME_BOLD)
-        addMapping(FONT_NAME_BOLD, 1, 1, FONT_NAME_BOLD)
-    except Exception:
-        FONT_NAME = "Helvetica"
-        FONT_NAME_BOLD = "Helvetica-Bold"
+    addMapping(FONT_NAME_BOLD, 0, 0, FONT_NAME_BOLD)
+    addMapping(FONT_NAME_BOLD, 1, 0, FONT_NAME_BOLD)
+    addMapping(FONT_NAME_BOLD, 0, 1, FONT_NAME_BOLD)
+    addMapping(FONT_NAME_BOLD, 1, 1, FONT_NAME_BOLD)
 else:
     FONT_NAME = "Helvetica"
     FONT_NAME_BOLD = "Helvetica-Bold"
-
-# Register standard fallbacks
-addMapping("Helvetica", 0, 0, "Helvetica")
-addMapping("Helvetica", 1, 0, "Helvetica-Bold")
-addMapping("Helvetica", 0, 1, "Helvetica-Oblique")
-addMapping("Helvetica", 1, 1, "Helvetica-BoldOblique")
 
 # Matplotlib Unicode Setup
 matplotlib.rcParams["font.sans-serif"] = [font_family_name, "DejaVu Sans", "Liberation Sans", "Arial"]
