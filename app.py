@@ -160,7 +160,7 @@ def get_sample_file_bytes():
     return None, None
 
 
-def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_ho):
+def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho):
     """Xuất PDF Chuẩn tiếng Việt - Visual Cards, 6 Charts Xu Hướng (Mỗi chart 1 dòng), Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
@@ -420,7 +420,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph("IV. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)", h2_style))
     story.append(Spacer(1, 4))
 
-    # A. Worst 10 CSSR (4 cột: Site, Cell, CSSR %, Traffic)
+    # A. Worst 10 CSSR
     if not worst10_cssr.empty:
         story.append(Paragraph("<b>1. Worst 10 Cells theo Tỷ lệ Thiết lập Cuộc gọi Thấp (CSSR):</b>", norm_style))
         story.append(Spacer(1, 2))
@@ -450,7 +450,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(t_cssr)
         story.append(Spacer(1, 8))
 
-    # B. Worst 10 DCR / Drop Rate (4 cột: Site, Cell, Drop Rate %, Traffic)
+    # B. Worst 10 DCR / Drop Rate
     if not worst10_dcr.empty:
         story.append(Paragraph("<b>2. Worst 10 Cells theo Tỷ lệ Rớt Dịch vụ Cao (DCR / Drop Rate):</b>", norm_style))
         story.append(Spacer(1, 2))
@@ -480,16 +480,16 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(t_dcr)
         story.append(Spacer(1, 8))
 
-    # C. Worst 10 Handover (4 cột: Site, Cell, Intra-HO %, Traffic)
-    if not worst10_ho.empty:
-        story.append(Paragraph("<b>3. Worst 10 Cells theo Tỷ lệ Chuyển giao Thấp (Handover SR):</b>", norm_style))
+    # C. Worst 10 Intra-frequency Handover
+    if not worst10_intra_ho.empty:
+        story.append(Paragraph("<b>3. Worst 10 Cells theo Tỷ lệ Chuyển giao Nội băng Thấp (Intra-freq HO):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_sub = worst10_ho.head(10)
+        w_sub = worst10_intra_ho.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
             p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Intra-frequency HO (%)", True, color_hex='#ffffff'),
+            p_cell("Intra-freq HO (%)", True, color_hex='#ffffff'),
             p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
         for _, row in w_sub.iterrows():
@@ -508,6 +508,36 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
         ]))
         story.append(t_ho)
+        story.append(Spacer(1, 8))
+
+    # D. Worst 10 Inter-frequency Handover
+    if not worst10_inter_ho.empty:
+        story.append(Paragraph("<b>4. Worst 10 Cells theo Tỷ lệ Chuyển giao Liên tần Thấp (Inter-freq HO):</b>", norm_style))
+        story.append(Spacer(1, 2))
+        w_sub = worst10_inter_ho.head(10)
+        
+        w_data = [[
+            p_cell("Site Name", True, color_hex='#ffffff'),
+            p_cell("Cell Name", True, color_hex='#ffffff'),
+            p_cell("Inter-freq HO (%)", True, color_hex='#ffffff'),
+            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
+        ]]
+        for _, row in w_sub.iterrows():
+            w_data.append([
+                p_cell(row.get("Site Name", "")),
+                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(f"{row.get('Inter-frequency HO (%)', 0):.2f}%"),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
+            ])
+        t_inter_ho = Table(w_data, colWidths=[180, 220, 170, 170])
+        t_inter_ho.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#ea580c")),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(t_inter_ho)
 
     doc.build(story)
     buf.seek(0)
@@ -879,15 +909,17 @@ if cell_col:
 
     target_col, sort_ascending = available_kpi_options[sel_worst_kpi_lbl]
 
-    cell_agg = filtered_df.groupby([site_col, cell_col]).agg({
-        col: "mean" for col in [
+    agg_dict = {
+        col: ("sum" if col == "Total Data Traffic Volume (GB)" else "mean") 
+        for col in [
             "Call Setup Success Rate", "Service Drop (all service)",
             "Intra-frequency HO (%)", "Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-frequency HO (%)",
             "DL_Throughput_Mbps", "UL_Throughput_Mbps", "CQI_4G",
             "Resource Block Untilizing Rate Downlink (%)", "Call Drop Rate (VoLTE)",
             "Total Data Traffic Volume (GB)"
         ] if col in filtered_df.columns
-    }).reset_index()
+    }
+    cell_agg = filtered_df.groupby([site_col, cell_col]).agg(agg_dict).reset_index()
 
     res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
 
@@ -896,7 +928,8 @@ if cell_col:
 
     worst10_cssr = cell_agg.sort_values(by="Call Setup Success Rate", ascending=True).head(10) if "Call Setup Success Rate" in cell_agg.columns else pd.DataFrame()
     worst10_dcr = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(10) if "Service Drop (all service)" in cell_agg.columns else pd.DataFrame()
-    worst10_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+    worst10_intra_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+    worst10_inter_ho = cell_agg.sort_values(by="Inter-frequency HO (%)", ascending=True).head(10) if "Inter-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
 
     top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
     top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
@@ -939,7 +972,8 @@ if cell_col:
         top10_cells_pdf,
         worst10_cssr,
         worst10_dcr,
-        worst10_ho
+        worst10_intra_ho,
+        worst10_inter_ho
     )
 
     st.download_button(
