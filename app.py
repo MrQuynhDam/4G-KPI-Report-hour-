@@ -99,8 +99,8 @@ def get_sample_csv():
     return pd.DataFrame(data).to_csv(index=False).encode("utf-8")
 
 
-def generate_pdf_report(summary, hourly_df, bad_df):
-    """Xuat PDF full Cards, Charts va Top Bad Cells"""
+def generate_pdf_report(summary, hourly_df, bad_df, top_traffic_df):
+    """Xuat PDF full Cards, Charts, Top Bad Cells va Top Traffic Sites/Cells"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -172,9 +172,32 @@ def generate_pdf_report(summary, hourly_df, bad_df):
         story.append(t_chart)
         story.append(Spacer(1, 10))
 
-    # SECTION 3: TOP BAD CELLS
+    # SECTION 3: TOP HIGH TRAFFIC SITES / CELLS
+    if not top_traffic_df.empty:
+        story.append(Paragraph("<b>III. DANH SÁCH TOP SITE/CELL CÓ LƯU LƯỢNG (TRAFFIC) CAO NHẤT</b>", styles["Heading2"]))
+        story.append(Spacer(1, 4))
+        tr_cols = list(top_traffic_df.columns)[:6]
+        tr_sub = top_traffic_df[tr_cols].head(8)
+
+        tr_data = [tr_cols]
+        for _, row in tr_sub.iterrows():
+            r_fmt = [f"{v:,.2f}" if isinstance(v, (float, int)) else str(v) for v in row]
+            tr_data.append(r_fmt)
+
+        t_tr = Table(tr_data, colWidths=[120, 150, 85, 85, 85, 85])
+        t_tr.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#047857")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE", (0,0), (-1,-1), 7.5),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#6ee7b7")),
+        ]))
+        story.append(t_tr)
+        story.append(Spacer(1, 10))
+
+    # SECTION 4: TOP BAD CELLS
     if not bad_df.empty:
-        story.append(Paragraph("<b>III. DANH SÁCH TOP WORST CELLS CẦN TỐI ƯU CẤP THIẾT</b>", styles["Heading2"]))
+        story.append(Paragraph("<b>IV. DANH SÁCH TOP WORST CELLS CẦN TỐI ƯU CẤP THIẾT</b>", styles["Heading2"]))
         story.append(Spacer(1, 4))
         bcols = [c for c in bad_df.columns if c in ["Site Name", "Tên đối tượng"]] + [c for c in bad_df.columns if c not in ["Site Name", "Tên đối tượng"]][:4]
         sub = bad_df[bcols].head(8)
@@ -443,13 +466,66 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 7. WORST CELLS MATRIX & PDF REPORT
+# 7. TOP HIGH TRAFFIC SITES / CELLS (NHẬP SỐ N TRỰC TIẾP)
+# ---------------------------------------------------------
+st.subheader("🔥 Top Site / Cell Có Lưu Lượng (Traffic) Cao Nhất")
+
+tr_col1, tr_col2 = st.columns([1, 1])
+with tr_col1:
+    tr_group_level = st.radio("📊 Nhóm theo Cấp độ:", ["Top Cell (Tên đối tượng)", "Top Site (Site Name)"], horizontal=True)
+with tr_col2:
+    # Cho phép user nhập số N trực tiếp bằng Textbox / NumberInput
+    top_n_traffic = st.number_input("🔢 Nhập số lượng Top N cần hiển thị:", min_value=1, max_value=200, value=10, step=1)
+
+if "Total Data Traffic Volume (GB)" in filtered_df.columns:
+    if tr_group_level == "Top Site (Site Name)" and site_col:
+        top_traffic_df = (
+            filtered_df.groupby(site_col)
+            .agg({
+                "Total Data Traffic Volume (GB)": "sum",
+                "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
+                "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
+                "DL_Throughput_Mbps": "mean",
+                "Resource Block Untilizing Rate Downlink (%)": "mean",
+            })
+            .reset_index()
+            .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
+            .head(int(top_n_traffic))
+        )
+    else:
+        grp_cols = [site_col, cell_col] if site_col and cell_col else ([cell_col] if cell_col else [site_col])
+        top_traffic_df = (
+            filtered_df.groupby(grp_cols)
+            .agg({
+                "Total Data Traffic Volume (GB)": "sum",
+                "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
+                "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
+                "DL_Throughput_Mbps": "mean",
+                "Resource Block Untilizing Rate Downlink (%)": "mean",
+            })
+            .reset_index()
+            .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
+            .head(int(top_n_traffic))
+        )
+
+    st.dataframe(top_traffic_df, use_container_width=True)
+else:
+    st.info("Không tìm thấy thông tin cột Total Data Traffic Volume (GB).")
+    top_traffic_df = pd.DataFrame()
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# 8. WORST CELLS MATRIX & PDF REPORT
 # ---------------------------------------------------------
 st.subheader("⚠️ Danh Sách Worst Cells & Báo Cáo Cấp Trên")
 
 if cell_col:
-    kpi_opt = st.selectbox("🎯 Lọc Worst Cells theo KPI:", ["Service Drop Rate (CDR)", "Low Downlink Throughput", "Low Uplink Throughput", "Low CQI (Poor RF Coverage)", "High PRB Congestion", "VoLTE Call Drop Rate"])
-    top_n = st.slider("Số lượng hiển thị:", 5, 30, 10)
+    kpi_col1, kpi_col2 = st.columns([2, 1])
+    with kpi_col1:
+        kpi_opt = st.selectbox("🎯 Lọc Worst Cells theo KPI:", ["Service Drop Rate (CDR)", "Low Downlink Throughput", "Low Uplink Throughput", "Low CQI (Poor RF Coverage)", "High PRB Congestion", "VoLTE Call Drop Rate"])
+    with kpi_col2:
+        top_n_worst = st.number_input("🔢 Nhập số lượng Worst Cells:", min_value=1, max_value=200, value=10, step=1)
 
     cell_agg = filtered_df.groupby([site_col, cell_col]).agg({
         col: "mean" for col in [
@@ -460,17 +536,17 @@ if cell_col:
     }).reset_index()
 
     if kpi_opt == "Service Drop Rate (CDR)":
-        res_df = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(top_n)
+        res_df = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(int(top_n_worst))
     elif kpi_opt == "Low Downlink Throughput":
-        res_df = cell_agg.sort_values(by="DL_Throughput_Mbps", ascending=True).head(top_n)
+        res_df = cell_agg.sort_values(by="DL_Throughput_Mbps", ascending=True).head(int(top_n_worst))
     elif kpi_opt == "Low Uplink Throughput":
-        res_df = cell_agg.sort_values(by="UL_Throughput_Mbps", ascending=True).head(top_n)
+        res_df = cell_agg.sort_values(by="UL_Throughput_Mbps", ascending=True).head(int(top_n_worst))
     elif kpi_opt == "Low CQI (Poor RF Coverage)":
-        res_df = cell_agg.sort_values(by="CQI_4G", ascending=True).head(top_n)
+        res_df = cell_agg.sort_values(by="CQI_4G", ascending=True).head(int(top_n_worst))
     elif kpi_opt == "High PRB Congestion":
-        res_df = cell_agg.sort_values(by="Resource Block Untilizing Rate Downlink (%)", ascending=False).head(top_n)
+        res_df = cell_agg.sort_values(by="Resource Block Untilizing Rate Downlink (%)", ascending=False).head(int(top_n_worst))
     else:
-        res_df = cell_agg.sort_values(by="Call Drop Rate (VoLTE)", ascending=False).head(top_n)
+        res_df = cell_agg.sort_values(by="Call Drop Rate (VoLTE)", ascending=False).head(int(top_n_worst))
 
     st.dataframe(res_df, use_container_width=True)
 
@@ -498,10 +574,10 @@ if cell_col:
         "Resource Block Untilizing Rate Downlink (%)": "mean"
     }).reset_index()
 
-    pdf_buf = generate_pdf_report(summary_data, hourly_summary, res_df)
+    pdf_buf = generate_pdf_report(summary_data, hourly_summary, res_df, top_traffic_df)
 
     st.download_button(
-        label="📑 Xuất Báo Cáo PDF (Đầy Đủ Cards & Charts)",
+        label="📑 Xuất Báo Cáo PDF (Đầy Đủ Cards, Top Traffic & Worst Cells)",
         data=pdf_buf,
         file_name="Bao_Cao_Toi_Uu_Mang_4G.pdf",
         mime="application/pdf",
