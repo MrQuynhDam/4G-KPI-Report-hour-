@@ -144,12 +144,12 @@ st.markdown(
     .kpi-tgt { font-size: 9px; color: #a0aec0; }
     .kpi-ftr { display: flex; justify-content: space-between; border-top: 1px solid #1a2233; padding-top: 3px; font-size: 8.5px; color: #718096; }
 
-    /* Thay đổi chữ "200MB per file" thành "10MB per file" */
+    /* Thay đổi chữ "200MB per file" thành "20MB per file" */
     div[data-testid="stFileUploaderDropzoneInstructions"] > * {
         display: none !important;
     }
     div[data-testid="stFileUploaderDropzoneInstructions"]::after {
-        content: "10MB per file • CSV";
+        content: "20MB per file • CSV";
         font-size: 14px;
         color: #8b9bb4;
     }
