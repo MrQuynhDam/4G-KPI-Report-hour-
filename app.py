@@ -1270,7 +1270,7 @@ st.subheader("🔥 Top N Site & Top N Cell Có Lưu Lượng (Traffic) Cao Nhấ
 
 tr_col1, tr_col2 = st.columns([2, 1])
 with tr_col1:
-    st.markdown("Lọc danh sách Top Site và Top Cell có tổng lưu lượng dữ liệu lớn nhất trong khoảng thời gian đã chọn.")
+    st.markdown("Lọc danh sách Top Site và Top Cell có tổng lưu lượng dữ liệu lớn nhất.")
 with tr_col2:
     top_n_traffic = st.number_input("🔢 Nhập số lượng Top N Traffic cần xem:", min_value=1, max_value=200, value=10, step=1)
 
@@ -1347,8 +1347,7 @@ if cell_col and cell_col in filtered_df.columns:
 
             st.markdown("---")
             st.markdown("### 📄 PDF Report Export")
-            st.caption("PDF (kèm biểu đồ) chỉ được dựng khi bấm nút, để không làm chậm mỗi lần đổi bộ lọc / Top N.")
-
+            
             _pdf_sig = (len(filtered_df), round(float(s_tf.sum()), 3), tuple(map(str, sel_dates)), len(sel_sites))
 
             if st.button("📑 Tạo Báo Cáo PDF"):
@@ -1422,4 +1421,4 @@ if cell_col and cell_col in filtered_df.columns:
                 else:
                     st.info("Bộ lọc đã thay đổi — bấm 'Tạo Báo Cáo PDF' để tạo lại.")
 
-st.caption("🚀 4G RAN Report — Hourly in 3 or 4 days")
+st.caption("🚀 4G RAN Quality Report")
