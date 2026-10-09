@@ -587,10 +587,18 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
-    df = pd.read_csv(file_input)
+    # thousands=',' : số dạng "5,512.99" (dấu phẩy ngăn cách hàng nghìn) phải được đọc thành số,
+    # nếu không pd.to_numeric(errors="coerce") sẽ biến toàn bộ giá trị >= 1000 thành NaN
+    df = pd.read_csv(file_input, thousands=",")
 
     # Chuẩn hóa tên cột
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [str(c).strip().lstrip("\ufeff") for c in df.columns]
+
+    # Phòng hờ: cột số vẫn là chuỗi có dấu phẩy (vd. file đã đọc kiểu khác) -> bỏ dấu phẩy
+    def _clean_num(series):
+        if series.dtype == object or str(series.dtype).startswith("str"):
+            return pd.to_numeric(series.astype(str).str.replace(",", "", regex=False).str.strip(), errors="coerce")
+        return pd.to_numeric(series, errors="coerce")
 
     # Mapping Alias cột
     alias_map = {
@@ -657,39 +665,57 @@ def process_data(file_input):
 
     found_dl_kbps = next((c for c in dl_kbps_cols if c in df.columns), None)
     if found_dl_kbps:
-        df["User Downlink Average Throughput (Kbps)"] = pd.to_numeric(df[found_dl_kbps], errors="coerce")
+        df["User Downlink Average Throughput (Kbps)"] = _clean_num(df[found_dl_kbps])
         df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
     else:
         dl_mbps_cols = ["DL_Throughput_Mbps", "User Downlink Average Throughput (Mbps)", "DL Throughput (Mbps)", "User DL Throughput (Mbps)"]
         found_dl_mbps = next((c for c in dl_mbps_cols if c in df.columns), None)
         if found_dl_mbps:
-            df["DL_Throughput_Mbps"] = pd.to_numeric(df[found_dl_mbps], errors="coerce")
+            df["DL_Throughput_Mbps"] = _clean_num(df[found_dl_mbps])
             df["User Downlink Average Throughput (Kbps)"] = df["DL_Throughput_Mbps"] * 1000.0
 
     found_ul_kbps = next((c for c in ul_kbps_cols if c in df.columns), None)
     if found_ul_kbps:
-        df["User Uplink Average Throughput (Kbps)"] = pd.to_numeric(df[found_ul_kbps], errors="coerce")
+        df["User Uplink Average Throughput (Kbps)"] = _clean_num(df[found_ul_kbps])
         df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"] / 1000.0
     else:
         ul_mbps_cols = ["UL_Throughput_Mbps", "User Uplink Average Throughput (Mbps)", "UL Throughput (Mbps)", "User UL Throughput (Mbps)"]
         found_ul_mbps = next((c for c in ul_mbps_cols if c in df.columns), None)
         if found_ul_mbps:
-            df["UL_Throughput_Mbps"] = pd.to_numeric(df[found_ul_mbps], errors="coerce")
+            df["UL_Throughput_Mbps"] = _clean_num(df[found_ul_mbps])
             df["User Uplink Average Throughput (Kbps)"] = df["UL_Throughput_Mbps"] * 1000.0
 
     # Parse DateTime & Hour
+    # Xác định "có giờ thật hay không" TRƯỚC khi tạo cột Hour (tránh việc cột Hour tự tạo làm has_hour luôn = True)
+    has_hour_col = "Hour" in df.columns
+    has_hour = False
+
     if "DateTime" in df.columns:
         df["DateTime"] = pd.to_datetime(df["DateTime"], dayfirst=True, errors="coerce")
         df["DateTime"] = df["DateTime"].fillna(pd.Timestamp.now())
+        dt_has_time = bool(((df["DateTime"].dt.hour != 0) | (df["DateTime"].dt.minute != 0)).any())
+
+        if has_hour_col:
+            # File có cột Giờ riêng (vd. "13:00" hoặc 13) -> ghép vào DateTime
+            hr = pd.to_numeric(df["Hour"].astype(str).str.extract(r"(\d{1,2})")[0], errors="coerce")
+            if hr.notnull().any():
+                df["Hour"] = hr.fillna(0).astype(int)
+                if not dt_has_time:
+                    df["DateTime"] = df["DateTime"].dt.normalize() + pd.to_timedelta(df["Hour"], unit="h")
+                has_hour = True
+            else:
+                df["Hour"] = df["DateTime"].dt.hour
+                has_hour = dt_has_time
+        else:
+            df["Hour"] = df["DateTime"].dt.hour
+            has_hour = dt_has_time   # Chỉ có ngày (không có giờ) -> False
+
         df["Date"] = df["DateTime"].dt.date
-        df["Hour"] = df["DateTime"].dt.hour
     else:
         df["DateTime"] = pd.Timestamp.now()
         df["Date"] = df["DateTime"].dt.date
         df["Hour"] = 0
 
-    # Kiểm tra xem dữ liệu có chứa thông tin giờ thực sự không
-    has_hour = df["Hour"].nunique() > 1 or any(c in df.columns for c in ["Giờ", "Hour", "hour"])
     df["_has_hour_col"] = has_hour
 
     # Freqband
@@ -726,7 +752,7 @@ def process_data(file_input):
 
     for col in num_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = _clean_num(df[col])
 
     return df
 
