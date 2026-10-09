@@ -168,8 +168,8 @@ def get_sample_file_bytes():
     return None, None
 
 
-def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None):
-    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, Freqband Charts, 6 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
+def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None, type_summary_df=None):
+    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, Freqband Charts, Thống Kê VNP/MORAN, 6 Charts Xu Hướng, Top 10 & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -240,9 +240,9 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         txt = f"<b>{text}</b>" if is_bold else str(text)
         return Paragraph(txt, p_st)
 
-    # MỤC II. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
+    # MỤC II. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND & LOẠI CELL (VNP/MORAN)
     if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
-        story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
+        story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND & LOẠI CELL", h2_style))
         story.append(Spacer(1, 2))
         
         fb_img_buf = io.BytesIO()
@@ -296,7 +296,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(Image(fb_img_buf, width=740, height=188))
         story.append(Spacer(1, 6))
 
-        # BẢNG THỐNG KÊ CHI TIẾT SỐ CELL THEO FREQBAND VÀO PDF
+        # 1. BẢNG THỐNG KÊ CHI TIẾT SỐ CELL THEO FREQBAND
         if fb_cell_counts is not None and not fb_cell_counts.empty:
             total_cells = fb_cell_counts["Số lượng Cell"].sum()
             
@@ -344,9 +344,56 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e2e8f0")),
             ]))
             story.append(t_fb)
+            story.append(Spacer(1, 6))
+
+        # 2. BẢNG BỔ SUNG: THỐNG KÊ PHÂN LOẠI CELL VNP & MORAN VÀO PDF
+        if type_summary_df is not None and not type_summary_df.empty:
+            story.append(Paragraph("<b>Thống kê phân loại Cell VNP & MORAN:</b>", norm_style))
+            story.append(Spacer(1, 2))
+
+            total_typed_cells = type_summary_df["Số lượng Cell"].sum()
+            tot_typed_tf = type_summary_df["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in type_summary_df.columns else 0.0
+
+            type_tbl_data = [[
+                p_cell("Loại Cell (Cell Type)", True, color_hex='#ffffff'),
+                p_cell("Số Lượng Cell", True, color_hex='#ffffff', align='center'),
+                p_cell("Tỷ Lệ Cell (%)", True, color_hex='#ffffff', align='center'),
+                p_cell("Tổng Traffic (GB)", True, color_hex='#ffffff', align='center')
+            ]]
+
+            for _, r in type_summary_df.iterrows():
+                ctype = str(r["CellType"])
+                cnt = int(r["Số lượng Cell"])
+                pct = (cnt / total_typed_cells * 100) if total_typed_cells > 0 else 0
+                tf_g = float(r.get("Total Data Traffic Volume (GB)", 0))
+
+                type_tbl_data.append([
+                    p_cell(f"Cell {ctype}"),
+                    p_cell(f"{cnt:,}", align='center'),
+                    p_cell(f"{pct:.2f}%", align='center'),
+                    p_cell(f"{tf_g:,.2f} GB", align='center')
+                ])
+
+            type_tbl_data.append([
+                p_cell("Tổng Cộng", True),
+                p_cell(f"{total_typed_cells:,}", True, align='center'),
+                p_cell("100.00%", True, align='center'),
+                p_cell(f"{tot_typed_tf:,.2f} GB", True, align='center')
+            ])
+
+            t_type = Table(type_tbl_data, colWidths=[200, 180, 180, 180])
+            t_type.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0284c7")),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+                ("TOPPADDING", (0,0), (-1,-1), 3),
+                ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                ("ROWBACKGROUNDS", (0,1), (-1,-2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e0f2fe")),
+            ]))
+            story.append(t_type)
             story.append(Spacer(1, 10))
 
-    # MỤC II. 6 CHARTS XU HƯỚNG
+    # MỤC III. 6 CHARTS XU HƯỚNG
     story.append(Paragraph("III. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
     story.append(Spacer(1, 4))
 
@@ -649,7 +696,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
 
 # ---------------------------------------------------------
-# 3. DATA PROCESSING & VALIDATION (ĐÃ CẬP NHẬT LOGIC LẤY FREQBAND TỪ SAU TỚI TRƯỚC)
+# 3. DATA PROCESSING & VALIDATION
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
@@ -701,31 +748,34 @@ def process_data(file_input):
     elif df["DateTime"].dt.hour.notnull().any() and (df["DateTime"].dt.hour != 0).any():
         df["Hour"] = df["DateTime"].dt.hour
 
-    # TRÍCH XUẤT FREQBAND CẢI TIẾN: LẤY KÝ TỰ TỪ SAU TỚI TRƯỚC
+    # TRÍCH XUẤT FREQBAND VÀ PHÂN LOẠI CELL (VNP VS MORAN)
     if cell_col_name:
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
             parts = s.split("-")
-            
-            # Tách chuỗi theo dấu "-" (ví dụ: VNP-4G-TNO801M32-DTP)
             if len(parts) >= 2:
-                target_part = parts[-2] # Lấy đoạn mã cell trước phần suffix
+                target_part = parts[-2]
                 if len(target_part) >= 2:
-                    char = target_part[-2] # Lấy ký tự thứ 2 từ sau tới trước
+                    char = target_part[-2]
                     if char.isdigit():
                         return f"F{char}"
-            
-            # Fallback nếu tên cell không chứa dấu gạch ngang chuẩn
             if len(s) >= 2:
                 char = s[-2]
                 if char.isdigit():
                     return f"F{char}"
-
             return "N/A"
 
+        def extract_cell_type(cell_name):
+            s = str(cell_name).strip().upper()
+            if s.startswith("VNP-4G"):
+                return "MORAN"
+            return "VNP"
+
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
+        df["CellType"] = df[cell_col_name].apply(extract_cell_type)
     else:
         df["Freqband"] = "N/A"
+        df["CellType"] = "VNP"
 
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
@@ -923,7 +973,7 @@ with c5:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND
+# 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND & CELL TYPE (VNP/MORAN)
 # ---------------------------------------------------------
 st.subheader("📊 Thống Kê Phân Bổ Cell & Traffic Theo Freqband")
 
@@ -931,6 +981,7 @@ fb_col1, fb_col2 = st.columns(2)
 
 fb_cell_counts = pd.DataFrame()
 fb_tf_df = pd.DataFrame()
+type_summary_df = pd.DataFrame()
 
 if cell_col and "Freqband" in filtered_df.columns:
     cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
@@ -977,6 +1028,19 @@ if cell_col and "Freqband" in filtered_df.columns:
 
         with fb_col2:
             st.plotly_chart(fig_fb_tf, use_container_width=True)
+
+    # Gom nhóm thống kê theo loại Cell (VNP vs MORAN)
+    if "CellType" in filtered_df.columns:
+        cell_type_unique = filtered_df[[cell_col, "CellType"]].drop_duplicates()
+        type_cnts = cell_type_unique["CellType"].value_counts().reset_index()
+        type_cnts.columns = ["CellType", "Số lượng Cell"]
+
+        if "Total Data Traffic Volume (GB)" in filtered_df.columns:
+            type_tf = filtered_df.groupby("CellType")["Total Data Traffic Volume (GB)"].sum().reset_index()
+            type_summary_df = pd.merge(type_cnts, type_tf, on="CellType", how="left").fillna(0)
+        else:
+            type_summary_df = type_cnts
+            type_summary_df["Total Data Traffic Volume (GB)"] = 0.0
 
 st.markdown("---")
 
@@ -1256,7 +1320,8 @@ if cell_col:
         worst10_intra_ho,
         worst10_inter_ho,
         fb_cell_counts,
-        fb_tf_df
+        fb_tf_df,
+        type_summary_df
     )
 
     st.download_button(
