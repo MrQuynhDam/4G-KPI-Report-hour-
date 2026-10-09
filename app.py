@@ -160,7 +160,7 @@ st.markdown(
 
 
 # ---------------------------------------------------------
-# 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, FREQBAND CHARTS & TABLE, 6 CHARTS, TOP 10 & WORST 10
+# 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, FREQBAND CHARTS, 6 CHARTS, TOP 10 & WORST 10
 # ---------------------------------------------------------
 def get_sample_file_bytes():
     """Đọc trực tiếp tệp 4G_Sample.csv có sẵn trên GitHub/thư mục dự án"""
@@ -171,8 +171,8 @@ def get_sample_file_bytes():
     return None, None
 
 
-def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None, fb_summary_df=None):
-    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, Freqband Charts & Table, 6 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
+def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None):
+    """Xuất PDF Chuẩn tiếng Việt - Visual Cards, Freqband Charts, 6 Charts Xu Hướng, Top 10 Site/Cell & Worst 10"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -238,62 +238,15 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(grid_cards)
     story.append(Spacer(1, 8))
 
-    # MỤC II. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
+    # MỤC I. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
     if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
         story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
         story.append(Spacer(1, 2))
         
-        # 1. BẢNG BỔ SUNG THỐNG KÊ SỐ LƯỢNG SITE VÀ CELL TƯƠNG ỨNG TỪNG BĂNG TẦN
-        if fb_summary_df is not None and not fb_summary_df.empty:
-            story.append(Paragraph("<b>Chi tiết Phân bổ Site, Cell và Traffic theo Freqband:</b>", norm_style))
-            story.append(Spacer(1, 2))
-
-            def p_fb_cell(text, is_bold=False, align='center', color_hex='#0f172a'):
-                p_st = ParagraphStyle('PFB', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else (1 if align=='center' else 2))
-                txt = f"<b>{text}</b>" if is_bold else str(text)
-                return Paragraph(txt, p_st)
-
-            fb_tbl_data = [[
-                p_fb_cell("Freqband", True, color_hex='#ffffff'),
-                p_fb_cell("Số lượng Site", True, color_hex='#ffffff'),
-                p_fb_cell("Số lượng Cell", True, color_hex='#ffffff'),
-                p_fb_cell("Tỷ lệ Cell (%)", True, color_hex='#ffffff'),
-                p_fb_cell("Total Traffic (GB)", True, color_hex='#ffffff')
-            ]]
-
-            total_cells_all = fb_summary_df["Số lượng Cell"].sum() if "Số lượng Cell" in fb_summary_df.columns else 1
-
-            for _, row in fb_summary_df.iterrows():
-                fb_name = str(row.get("Freqband", ""))
-                site_cnt = f"{row.get('Số lượng Site', 0):,}"
-                cell_cnt = f"{row.get('Số lượng Cell', 0):,}"
-                cell_pct = f"{(row.get('Số lượng Cell', 0) / total_cells_all * 100):.1f}%" if total_cells_all > 0 else "0.0%"
-                tf_val = f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}"
-
-                fb_tbl_data.append([
-                    p_fb_cell(fb_name, is_bold=True),
-                    p_fb_cell(site_cnt),
-                    p_fb_cell(cell_cnt),
-                    p_fb_cell(cell_pct),
-                    p_fb_cell(tf_val, align='right')
-                ])
-
-            t_fb = Table(fb_tbl_data, colWidths=[120, 150, 150, 140, 180])
-            t_fb.setStyle(TableStyle([
-                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e3a8a")),
-                ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-                ("TOPPADDING", (0,0), (-1,-1), 3),
-                ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
-                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
-            ]))
-            story.append(t_fb)
-            story.append(Spacer(1, 6))
-
-        # 2. BIỂU ĐỒ MINH HỌA
         fb_img_buf = io.BytesIO()
-        fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.5), dpi=150)
+        fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.8), dpi=150)
         
-        # Chart Cell count & percentage
+        # 1. Chart Cell count & percentage
         if fb_cell_counts is not None and not fb_cell_counts.empty:
             fb_labels = fb_cell_counts["Freqband"].tolist()
             fb_sizes = fb_cell_counts["Số lượng Cell"].tolist()
@@ -311,7 +264,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 at.set_weight('bold')
             ax1_fb.set_title("Số lượng & Tỷ lệ Cell theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
         
-        # Chart Traffic Volume per Freqband
+        # 2. Chart Traffic Volume per Freqband
         if fb_tf_df is not None and not fb_tf_df.empty:
             fb_bands = fb_tf_df["Freqband"].tolist()
             fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
@@ -341,10 +294,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         plt.savefig(fb_img_buf, format='png', dpi=150)
         plt.close()
         fb_img_buf.seek(0)
-        story.append(Image(fb_img_buf, width=740, height=168))
+        story.append(Image(fb_img_buf, width=740, height=188))
         story.append(Spacer(1, 10))
 
-    # MỤC III. 6 CHARTS XU HƯỚNG
+    # MỤC II. 6 CHARTS XU HƯỚNG
     story.append(Paragraph("III. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
     story.append(Spacer(1, 4))
 
@@ -441,7 +394,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
     story.append(PageBreak())
 
-    # MỤC IV. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
+    # MỤC III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
     story.append(Paragraph("IV. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
     story.append(Spacer(1, 4))
 
@@ -871,53 +824,20 @@ st.markdown("---")
 # ---------------------------------------------------------
 # 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND (NGAY DƯỚI CARDS)
 # ---------------------------------------------------------
-st.subheader("📊 Thống Kê Phân Bổ Site, Cell & Traffic Theo Freqband")
+st.subheader("📊 Thống Kê Phân Bổ Cell & Traffic Theo Freqband")
+
+fb_col1, fb_col2 = st.columns(2)
 
 fb_cell_counts = pd.DataFrame()
 fb_tf_df = pd.DataFrame()
-fb_summary_df = pd.DataFrame()
 
 if cell_col and "Freqband" in filtered_df.columns:
-    # 1. Thống kê Số lượng Cell & Site theo Freqband
-    grp_fb_cols = [cell_col, "Freqband"]
-    if site_col:
-        grp_fb_cols.append(site_col)
-    
-    unique_cells_fb = filtered_df[grp_fb_cols].drop_duplicates()
-    
-    # Aggregation
-    fb_agg_dict = {cell_col: "count"}
-    if site_col:
-        fb_agg_dict[site_col] = "nunique"
-        
-    fb_summary_df = unique_cells_fb.groupby("Freqband").agg(fb_agg_dict).reset_index()
-    
-    if site_col:
-        fb_summary_df.rename(columns={site_col: "Số lượng Site", cell_col: "Số lượng Cell"}, inplace=True)
-    else:
-        fb_summary_df.rename(columns={cell_col: "Số lượng Cell"}, inplace=True)
-        fb_summary_df["Số lượng Site"] = "N/A"
+    # 1. Thống kê Số lượng Cell theo Freqband (Dựa trên Cell duy nhất)
+    cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
+    fb_cell_counts = cell_fb_df["Freqband"].value_counts().reset_index()
+    fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
+    fb_cell_counts = fb_cell_counts.sort_values(by="Freqband")
 
-    # Tính tổng Traffic theo Freqband
-    if "Total Data Traffic Volume (GB)" in filtered_df.columns:
-        fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
-        fb_summary_df = pd.merge(fb_summary_df, fb_tf_df, on="Freqband", how="left").fillna(0)
-    else:
-        fb_summary_df["Total Data Traffic Volume (GB)"] = 0.0
-
-    fb_summary_df = fb_summary_df.sort_values(by="Freqband")
-    
-    fb_cell_counts = fb_summary_df[["Freqband", "Số lượng Cell"]].copy()
-
-    # BẢNG BỔ SUNG TRÊN STREAMLIT
-    st.markdown("**Bảng Thống kê Phân bổ Site, Cell và Traffic theo Freqband:**")
-    st.dataframe(fb_summary_df, use_container_width=True)
-
-    st.markdown("<br/>", unsafe_allow_html=True)
-
-    fb_col1, fb_col2 = st.columns(2)
-
-    # Biểu đồ Pie Cell
     fig_fb_cell = px.pie(
         fb_cell_counts,
         names="Freqband",
@@ -932,10 +852,13 @@ if cell_col and "Freqband" in filtered_df.columns:
     with fb_col1:
         st.plotly_chart(fig_fb_cell, use_container_width=True)
 
-    # Biểu đồ Bar Traffic
+    # 2. Thống kê Tổng Traffic theo Freqband
     if "Total Data Traffic Volume (GB)" in filtered_df.columns:
+        fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
+        fb_tf_df = fb_tf_df.sort_values(by="Freqband")
+
         fig_fb_tf = px.bar(
-            fb_summary_df,
+            fb_tf_df,
             x="Freqband",
             y="Total Data Traffic Volume (GB)",
             text="Total Data Traffic Volume (GB)",
@@ -1196,8 +1119,7 @@ if cell_col:
         worst10_intra_ho,
         worst10_inter_ho,
         fb_cell_counts,
-        fb_tf_df,
-        fb_summary_df
+        fb_tf_df
     )
 
     st.download_button(
