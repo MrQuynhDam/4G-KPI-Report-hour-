@@ -296,11 +296,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(Image(fb_img_buf, width=740, height=188))
         story.append(Spacer(1, 6))
 
-        # --- BỔ SUNG BẢNG THỐNG KÊ CHI TIẾT SỐ CELL THEO FREQBAND VÀO PDF ---
+        # BẢNG THỐNG KÊ CHI TIẾT SỐ CELL THEO FREQBAND VÀO PDF
         if fb_cell_counts is not None and not fb_cell_counts.empty:
             total_cells = fb_cell_counts["Số lượng Cell"].sum()
             
-            # Merged DataFrame giữa Số cell và Traffic để hiển thị bảng đầy đủ
             fb_summary_df = fb_cell_counts.copy()
             if fb_tf_df is not None and not fb_tf_df.empty:
                 fb_summary_df = pd.merge(fb_summary_df, fb_tf_df, on="Freqband", how="left").fillna(0)
@@ -327,7 +326,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                     p_cell(f"{tf_g:,.2f} GB", align='center')
                 ])
 
-            # Hàng tổng cộng
             tot_tf = fb_summary_df["Total Data Traffic Volume (GB)"].sum()
             fb_tbl_data.append([
                 p_cell("Tổng Cộng", True),
@@ -343,7 +341,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 ("TOPPADDING", (0,0), (-1,-1), 3),
                 ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
                 ("ROWBACKGROUNDS", (0,1), (-1,-2), [colors.white, colors.HexColor("#f8fafc")]),
-                ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e2e8f0")), # Dòng Tổng cộng
+                ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e2e8f0")),
             ]))
             story.append(t_fb)
             story.append(Spacer(1, 10))
@@ -651,7 +649,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
 
 # ---------------------------------------------------------
-# 3. DATA PROCESSING & VALIDATION
+# 3. DATA PROCESSING & VALIDATION (ĐÃ CẬP NHẬT LOGIC LẤY FREQBAND TỪ SAU TỚI TRƯỚC)
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
@@ -703,13 +701,28 @@ def process_data(file_input):
     elif df["DateTime"].dt.hour.notnull().any() and (df["DateTime"].dt.hour != 0).any():
         df["Hour"] = df["DateTime"].dt.hour
 
+    # TRÍCH XUẤT FREQBAND CẢI TIẾN: LẤY KÝ TỰ TỪ SAU TỚI TRƯỚC
     if cell_col_name:
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
-            if len(s) >= 11:
-                char = s[10] # Ký tự thứ 11
-                return f"F{char}" if not char.startswith("F") else char
+            parts = s.split("-")
+            
+            # Tách chuỗi theo dấu "-" (ví dụ: VNP-4G-TNO801M32-DTP)
+            if len(parts) >= 2:
+                target_part = parts[-2] # Lấy đoạn mã cell trước phần suffix
+                if len(target_part) >= 2:
+                    char = target_part[-2] # Lấy ký tự thứ 2 từ sau tới trước
+                    if char.isdigit():
+                        return f"F{char}"
+            
+            # Fallback nếu tên cell không chứa dấu gạch ngang chuẩn
+            if len(s) >= 2:
+                char = s[-2]
+                if char.isdigit():
+                    return f"F{char}"
+
             return "N/A"
+
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
     else:
         df["Freqband"] = "N/A"
