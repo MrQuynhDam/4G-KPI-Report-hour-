@@ -600,6 +600,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 def process_data(file_input):
     df = pd.read_csv(file_input)
 
+    # 1. Tự động kiểm tra và thêm cột "Giờ" với giá trị 0 nếu chưa có
+    h_cols = ["Giờ", "Hour", "hour"]
+    h_col = next((c for c in h_cols if c in df.columns), None)
+    
+    if not h_col:
+        df["Giờ"] = 0
+        h_col = "Giờ"
+
+    df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
+
+    # 2. Xử lý cột Thời gian
     t_cols = ["Thời gian", "Time", "DateTime", "timestamp"]
     t_col = next((c for c in t_cols if c in df.columns), None)
 
@@ -609,13 +620,6 @@ def process_data(file_input):
     else:
         st.error("❌ Thiếu cột Thời gian!")
         st.stop()
-
-    h_cols = ["Giờ", "Hour", "hour"]
-    h_col = next((c for c in h_cols if c in df.columns), None)
-    if h_col:
-        df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
-    else:
-        df["Hour"] = df["DateTime"].dt.hour
 
     # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
