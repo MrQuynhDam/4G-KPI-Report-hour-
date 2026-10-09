@@ -607,8 +607,8 @@ def process_data(file_input):
         df["DateTime"] = pd.to_datetime(df[t_col], dayfirst=True, errors="coerce")
         df["Date"] = df["DateTime"].dt.date
     else:
-        st.error("❌ Thiếu cột Thời gian!")
-        st.stop()
+        df["DateTime"] = pd.Timestamp.now()
+        df["Date"] = df["DateTime"].dt.date
 
     h_cols = ["Giờ", "Hour", "hour"]
     h_col = next((c for c in h_cols if c in df.columns), None)
@@ -616,6 +616,7 @@ def process_data(file_input):
         df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
     else:
         df["Hour"] = df["DateTime"].dt.hour
+        df["Hour"] = df["Hour"].fillna(0).astype(int)
 
     # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
@@ -910,47 +911,51 @@ with ctrl_col2:
     sel_kpi_lbl = st.selectbox("🎯 Chọn KPI kết hợp Traffic:", options=list(avail_kpis.keys()))
 
 sel_kpi_col = avail_kpis[sel_kpi_lbl]
-agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
+
+# Định nghĩa các hàm tổng hợp an toàn cho .agg()
+agg_candidates = {
+    "Total Data Traffic Volume (GB)": "sum",
+    sel_kpi_col: "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean",
+    "DL_Throughput_Mbps": "mean",
+    "UL_Throughput_Mbps": "mean",
+    "Service Drop (all service)": "mean",
+    "Call Setup Success Rate": "mean",
+    "Intra-frequency HO (%)": "mean",
+    "Inter-frequency HO (%)": "mean",
+    "Resource Block Untilizing Rate Downlink (%)": "mean",
+    "VoLTE E-RAB Call Setup Success Rate": "mean",
+    "Call Drop Rate (VoLTE)": "mean",
+    "VoLTE Traffic (Erl)": "sum"
+}
+
+# Lọc động chỉ gom nhóm các cột thực sự có mặt trong dataframe
+agg_dict_safe = {col: func for col, func in agg_candidates.items() if col in filtered_df.columns}
 
 if time_mode == "Chỉ theo giờ (24h Avg)":
-    c_data = filtered_df.groupby("Hour").agg({
-        "Total Data Traffic Volume (GB)": "sum",
-        sel_kpi_col: agg_func,
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }).reset_index()
+    c_data = filtered_df.groupby("Hour").agg(agg_dict_safe).reset_index()
     x_axis = c_data["Hour"]
     x_title = "Giờ trong ngày (0h - 23h)"
 else:
-    c_data = filtered_df.groupby(["Date", "Hour", "DateTime"]).agg({
-        "Total Data Traffic Volume (GB)": "sum",
-        sel_kpi_col: agg_func,
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }).reset_index().sort_values(by="DateTime")
-    c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m %H:00")
+    group_cols = [col for col in ["Date", "Hour", "DateTime"] if col in filtered_df.columns]
+    if group_cols:
+        c_data = filtered_df.groupby(group_cols).agg(agg_dict_safe).reset_index()
+        if "DateTime" in c_data.columns:
+            c_data = c_data.sort_values(by="DateTime")
+            c_data["TimeLabel"] = pd.to_datetime(c_data["DateTime"]).dt.strftime("%d/%m %H:00")
+        else:
+            c_data["TimeLabel"] = c_data["Hour"].astype(str) + ":00"
+    else:
+        c_data = filtered_df.agg(agg_dict_safe).to_frame().T
+        c_data["TimeLabel"] = "Default"
+
     x_axis = c_data["TimeLabel"]
     x_title = "Thời Gian (Ngày/Giờ)"
 
 fig = make_subplots(specs=[[{"secondary_y": True}]])
-fig.add_trace(go.Bar(x=x_axis, y=c_data["Total Data Traffic Volume (GB)"], name="Traffic (GB)", marker_color="rgba(53, 162, 235, 0.5)"), secondary_y=False)
-fig.add_trace(go.Scatter(x=x_axis, y=c_data[sel_kpi_col], name=sel_kpi_lbl, mode="lines+markers", line=dict(color="#ff4d4f", width=2.5)), secondary_y=True)
+if "Total Data Traffic Volume (GB)" in c_data.columns:
+    fig.add_trace(go.Bar(x=x_axis, y=c_data["Total Data Traffic Volume (GB)"], name="Traffic (GB)", marker_color="rgba(53, 162, 235, 0.5)"), secondary_y=False)
+if sel_kpi_col in c_data.columns:
+    fig.add_trace(go.Scatter(x=x_axis, y=c_data[sel_kpi_col], name=sel_kpi_lbl, mode="lines+markers", line=dict(color="#ff4d4f", width=2.5)), secondary_y=True)
 
 fig.update_layout(title_text=f"📊 Biểu đồ Traffic và {sel_kpi_lbl}", template="plotly_dark", hovermode="x unified", height=420, margin=dict(l=10, r=10, t=40, b=10))
 fig.update_xaxes(title_text=x_title, type="category" if time_mode != "Chỉ theo giờ (24h Avg)" else None)
@@ -977,26 +982,27 @@ top_site_df = pd.DataFrame()
 if "Total Data Traffic Volume (GB)" in filtered_df.columns:
     tab_cell, tab_site = st.tabs(["📱 Top Cell Traffic", "🏢 Top Site Traffic"])
 
-    grp_cols = [site_col, cell_col] if site_col and cell_col else ([cell_col] if cell_col else [site_col])
-    top_cell_df = (
-        filtered_df.groupby(grp_cols)
-        .agg({
-            "Total Data Traffic Volume (GB)": "sum",
-            "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
-            "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
-            "DL_Throughput_Mbps": "mean",
-            "Resource Block Untilizing Rate Downlink (%)": "mean",
-        })
-        .reset_index()
-        .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
-        .head(int(top_n_traffic))
-    )
+    grp_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
+    if grp_cols:
+        top_cell_df = (
+            filtered_df.groupby(grp_cols)
+            .agg({
+                "Total Data Traffic Volume (GB)": "sum",
+                "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
+                "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
+                "DL_Throughput_Mbps": "mean",
+                "Resource Block Untilizing Rate Downlink (%)": "mean",
+            })
+            .reset_index()
+            .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
+            .head(int(top_n_traffic))
+        )
 
-    with tab_cell:
-        st.markdown(f"**Top {top_n_traffic} Cell có lưu lượng cao nhất:**")
-        st.dataframe(top_cell_df, use_container_width=True)
+        with tab_cell:
+            st.markdown(f"**Top {top_n_traffic} Cell có lưu lượng cao nhất:**")
+            st.dataframe(top_cell_df, use_container_width=True)
 
-    if site_col:
+    if site_col and site_col in filtered_df.columns:
         top_site_df = (
             filtered_df.groupby(site_col)
             .agg({
@@ -1040,93 +1046,104 @@ if cell_col:
         if col in filtered_df.columns:
             available_kpi_options[lbl] = (col, is_asc)
 
-    kpi_col1, kpi_col2 = st.columns([2, 1])
-    with kpi_col1:
-        sel_worst_kpi_lbl = st.selectbox(
-            "🎯 Chọn KPI cần xem trên giao diện:",
-            options=list(available_kpi_options.keys())
+    if available_kpi_options:
+        kpi_col1, kpi_col2 = st.columns([2, 1])
+        with kpi_col1:
+            sel_worst_kpi_lbl = st.selectbox(
+                "🎯 Chọn KPI cần xem trên giao diện:",
+                options=list(available_kpi_options.keys())
+            )
+        with kpi_col2:
+            top_n_worst = st.number_input("🔢 Nhập số lượng Worst Cells (N):", min_value=1, max_value=200, value=10, step=1)
+
+        target_col, sort_ascending = available_kpi_options[sel_worst_kpi_lbl]
+
+        agg_dict = {
+            col: ("sum" if col == "Total Data Traffic Volume (GB)" else "mean") 
+            for col in [
+                "Call Setup Success Rate", "Service Drop (all service)",
+                "Intra-frequency HO (%)", "Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-frequency HO (%)",
+                "DL_Throughput_Mbps", "UL_Throughput_Mbps", "CQI_4G",
+                "Resource Block Untilizing Rate Downlink (%)", "Call Drop Rate (VoLTE)",
+                "Total Data Traffic Volume (GB)"
+            ] if col in filtered_df.columns
+        }
+        
+        grp_worst_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
+        cell_agg = filtered_df.groupby(grp_worst_cols).agg(agg_dict).reset_index()
+
+        res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
+
+        st.markdown(f"**Danh sách Top {top_n_worst} Worst Cells theo `{sel_worst_kpi_lbl}`:**")
+        st.dataframe(res_df, use_container_width=True)
+
+        worst10_cssr = cell_agg.sort_values(by="Call Setup Success Rate", ascending=True).head(10) if "Call Setup Success Rate" in cell_agg.columns else pd.DataFrame()
+        worst10_dcr = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(10) if "Service Drop (all service)" in cell_agg.columns else pd.DataFrame()
+        worst10_intra_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+        worst10_inter_ho = cell_agg.sort_values(by="Inter-frequency HO (%)", ascending=True).head(10) if "Inter-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+
+        top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
+        top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
+
+        st.markdown("---")
+        st.markdown("### 📄 PDF Report Export")
+        summary_data = {
+            "tf": s_tf.sum(),
+            "cssr": calc_weighted_avg(filtered_df, "Call Setup Success Rate"),
+            "drop": calc_weighted_avg(filtered_df, "Service Drop (all service)"),
+            "dl": calc_weighted_avg(filtered_df, "DL_Throughput_Mbps"),
+            "ul": calc_weighted_avg(filtered_df, "UL_Throughput_Mbps"),
+            "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
+            "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
+            "intra": s_intra.mean(),
+            "inter": s_inter.mean(),
+            "srvcc": s_srvcc.mean(),
+        }
+
+        # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
+        timeline_grp = [c for c in ["Date", "Hour", "DateTime"] if c in filtered_df.columns]
+        if timeline_grp:
+            c_data_timeline = filtered_df.groupby(timeline_grp).apply(
+                lambda g: pd.Series({
+                    "Total Data Traffic Volume (GB)": g["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in g else 0,
+                    "DL_Throughput_Mbps": calc_weighted_avg(g, "DL_Throughput_Mbps"),
+                    "UL_Throughput_Mbps": calc_weighted_avg(g, "UL_Throughput_Mbps"),
+                    "Service Drop (all service)": calc_weighted_avg(g, "Service Drop (all service)"),
+                    "Call Setup Success Rate": calc_weighted_avg(g, "Call Setup Success Rate"),
+                    "Intra-frequency HO (%)": g["Intra-frequency HO (%)"].mean() if "Intra-frequency HO (%)" in g else 0,
+                    "Inter-frequency HO (%)": g["Inter-frequency HO (%)"].mean() if "Inter-frequency HO (%)" in g else 0,
+                    "Resource Block Untilizing Rate Downlink (%)": calc_weighted_avg(g, "Resource Block Untilizing Rate Downlink (%)"),
+                    "VoLTE E-RAB Call Setup Success Rate": calc_weighted_avg(g, "VoLTE E-RAB Call Setup Success Rate", weight_col="VoLTE Traffic (Erl)"),
+                    "Call Drop Rate (VoLTE)": calc_weighted_avg(g, "Call Drop Rate (VoLTE)", weight_col="VoLTE Traffic (Erl)"),
+                    "VoLTE Traffic (Erl)": g["VoLTE Traffic (Erl)"].sum() if "VoLTE Traffic (Erl)" in g else 0
+                })
+            ).reset_index()
+            if "DateTime" in c_data_timeline.columns:
+                c_data_timeline = c_data_timeline.sort_values(by="DateTime")
+                c_data_timeline["TimeLabel"] = pd.to_datetime(c_data_timeline["DateTime"]).dt.strftime("%d/%m %H:00")
+            else:
+                c_data_timeline["TimeLabel"] = c_data_timeline["Hour"].astype(str) + ":00"
+        else:
+            c_data_timeline = pd.DataFrame()
+
+        pdf_buf = generate_pdf_report(
+            summary_data,
+            c_data_timeline,
+            top10_sites_pdf,
+            top10_cells_pdf,
+            worst10_cssr,
+            worst10_dcr,
+            worst10_intra_ho,
+            worst10_inter_ho,
+            fb_cell_counts,
+            fb_tf_df
         )
-    with kpi_col2:
-        top_n_worst = st.number_input("🔢 Nhập số lượng Worst Cells (N):", min_value=1, max_value=200, value=10, step=1)
 
-    target_col, sort_ascending = available_kpi_options[sel_worst_kpi_lbl]
-
-    agg_dict = {
-        col: ("sum" if col == "Total Data Traffic Volume (GB)" else "mean") 
-        for col in [
-            "Call Setup Success Rate", "Service Drop (all service)",
-            "Intra-frequency HO (%)", "Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-frequency HO (%)",
-            "DL_Throughput_Mbps", "UL_Throughput_Mbps", "CQI_4G",
-            "Resource Block Untilizing Rate Downlink (%)", "Call Drop Rate (VoLTE)",
-            "Total Data Traffic Volume (GB)"
-        ] if col in filtered_df.columns
-    }
-    cell_agg = filtered_df.groupby([site_col, cell_col]).agg(agg_dict).reset_index()
-
-    res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
-
-    st.markdown(f"**Danh sách Top {top_n_worst} Worst Cells theo `{sel_worst_kpi_lbl}`:**")
-    st.dataframe(res_df, use_container_width=True)
-
-    worst10_cssr = cell_agg.sort_values(by="Call Setup Success Rate", ascending=True).head(10) if "Call Setup Success Rate" in cell_agg.columns else pd.DataFrame()
-    worst10_dcr = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(10) if "Service Drop (all service)" in cell_agg.columns else pd.DataFrame()
-    worst10_intra_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
-    worst10_inter_ho = cell_agg.sort_values(by="Inter-frequency HO (%)", ascending=True).head(10) if "Inter-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
-
-    top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
-    top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
-
-    st.markdown("---")
-    st.markdown("### 📄 PDF Report Export")
-    summary_data = {
-        "tf": s_tf.sum(),
-        "cssr": calc_weighted_avg(filtered_df, "Call Setup Success Rate"),
-        "drop": calc_weighted_avg(filtered_df, "Service Drop (all service)"),
-        "dl": calc_weighted_avg(filtered_df, "DL_Throughput_Mbps"),
-        "ul": calc_weighted_avg(filtered_df, "UL_Throughput_Mbps"),
-        "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
-        "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
-        "intra": s_intra.mean(),
-        "inter": s_inter.mean(),
-        "srvcc": s_srvcc.mean(),
-    }
-
-    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
-    c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).apply(
-        lambda g: pd.Series({
-            "Total Data Traffic Volume (GB)": g["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in g else 0,
-            "DL_Throughput_Mbps": calc_weighted_avg(g, "DL_Throughput_Mbps"),
-            "UL_Throughput_Mbps": calc_weighted_avg(g, "UL_Throughput_Mbps"),
-            "Service Drop (all service)": calc_weighted_avg(g, "Service Drop (all service)"),
-            "Call Setup Success Rate": calc_weighted_avg(g, "Call Setup Success Rate"),
-            "Intra-frequency HO (%)": g["Intra-frequency HO (%)"].mean() if "Intra-frequency HO (%)" in g else 0,
-            "Inter-frequency HO (%)": g["Inter-frequency HO (%)"].mean() if "Inter-frequency HO (%)" in g else 0,
-            "Resource Block Untilizing Rate Downlink (%)": calc_weighted_avg(g, "Resource Block Untilizing Rate Downlink (%)"),
-            "VoLTE E-RAB Call Setup Success Rate": calc_weighted_avg(g, "VoLTE E-RAB Call Setup Success Rate", weight_col="VoLTE Traffic (Erl)"),
-            "Call Drop Rate (VoLTE)": calc_weighted_avg(g, "Call Drop Rate (VoLTE)", weight_col="VoLTE Traffic (Erl)"),
-            "VoLTE Traffic (Erl)": g["VoLTE Traffic (Erl)"].sum() if "VoLTE Traffic (Erl)" in g else 0
-        })
-    ).reset_index().sort_values(by="DateTime")
-    c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m %H:00")
-
-    pdf_buf = generate_pdf_report(
-        summary_data,
-        c_data_timeline,
-        top10_sites_pdf,
-        top10_cells_pdf,
-        worst10_cssr,
-        worst10_dcr,
-        worst10_intra_ho,
-        worst10_inter_ho,
-        fb_cell_counts,
-        fb_tf_df
-    )
-
-    st.download_button(
-        label="📑 Tải Báo Cáo PDF...",
-        data=pdf_buf,
-        file_name="4G_Network_Health.pdf",
-        mime="application/pdf",
-    )
+        st.download_button(
+            label="📑 Tải Báo Cáo PDF...",
+            data=pdf_buf,
+            file_name="4G_Network_Health.pdf",
+            mime="application/pdf",
+        )
 
 st.caption("🚀 4G RAN Report — Hourly in 3 or 4 days")
