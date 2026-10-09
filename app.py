@@ -38,12 +38,10 @@ def setup_vietnamese_fonts():
     local_reg = "DejaVuSans.ttf"
     local_bold = "DejaVuSans-Bold.ttf"
     
-    # 1. Đọc file local nằm trong dự án (Khuyên dùng)
     if os.path.exists(local_reg):
         bold_path = local_bold if os.path.exists(local_bold) else local_reg
         return local_reg, bold_path, "DejaVu Sans"
 
-    # 2. Tìm kiếm font hệ thống (Linux / Debian / Ubuntu)
     search_dirs = [
         "/usr/share/fonts",
         "/usr/local/share/fonts",
@@ -144,7 +142,6 @@ st.markdown(
     .kpi-tgt { font-size: 9px; color: #a0aec0; }
     .kpi-ftr { display: flex; justify-content: space-between; border-top: 1px solid #1a2233; padding-top: 3px; font-size: 8.5px; color: #718096; }
 
-    /* Thay đổi chữ "200MB per file" thành "50MB per file" */
     div[data-testid="stFileUploaderDropzoneInstructions"] > * {
         display: none !important;
     }
@@ -246,7 +243,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         fb_img_buf = io.BytesIO()
         fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.8), dpi=150)
         
-        # 1. Chart Cell count & percentage
         if fb_cell_counts is not None and not fb_cell_counts.empty:
             fb_labels = fb_cell_counts["Freqband"].tolist()
             fb_sizes = fb_cell_counts["Số lượng Cell"].tolist()
@@ -264,7 +260,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 at.set_weight('bold')
             ax1_fb.set_title("Số lượng & Tỷ lệ Cell theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
         
-        # 2. Chart Traffic Volume per Freqband
         if fb_tf_df is not None and not fb_tf_df.empty:
             fb_bands = fb_tf_df["Freqband"].tolist()
             fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
@@ -274,9 +269,8 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             ax2_fb.tick_params(axis='both', labelsize=7)
             ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
             
-            # --- TĂNG KHOẢNG TRỐNG TRỤC Y ---
             max_tf = max(fb_traffics) if fb_traffics else 1
-            ax2_fb.set_ylim(0, max_tf * 1.18)  # Mở rộng giới hạn trên của trục Y lên 18%
+            ax2_fb.set_ylim(0, max_tf * 1.18)
             
             for bar in fb_bars:
                 yval = bar.get_height()
@@ -311,10 +305,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 x_labels.append(pd.to_datetime(r["DateTime"]).strftime("%d/%m %H:00"))
             elif "Date" in r and pd.notnull(r["Date"]):
                 d_str = pd.to_datetime(r["Date"]).strftime("%d/%m") if pd.notnull(r["Date"]) else ""
-                h_str = f"{int(r.get('Hour', 0)):02d}:00"
+                h_str = f"{int(r.get('Hour', 0)):02d}:00" if "Hour" in r else ""
                 x_labels.append(f"{d_str} {h_str}".strip())
             else:
-                x_labels.append(f"{int(r.get('Hour', 0)):02d}:00")
+                x_labels.append(f"{int(r.get('Hour', 0)):02d}:00" if "Hour" in r else "N/A")
         n_pts = len(x_labels)
         step = max(1, n_pts // 24)
 
@@ -614,7 +608,7 @@ def process_data(file_input):
     h_col = next((c for c in h_cols if c in df.columns), None)
     if h_col:
         df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
-    else:
+    elif df["DateTime"].dt.hour.notnull().any() and (df["DateTime"].dt.hour != 0).any():
         df["Hour"] = df["DateTime"].dt.hour
 
     # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
@@ -764,7 +758,6 @@ def calc_weighted_avg(df_in, kpi_col, weight_col="Total Data Traffic Volume (GB)
         if total_weight > 0:
             return (df_valid[kpi_col] * df_valid[weight_col]).sum() / total_weight
 
-    # Fallback nếu không có weight hoặc weight = 0
     df_valid = df_in[df_in[kpi_col].notnull()]
     return df_valid[kpi_col].mean() if not df_valid.empty else 0.0
 
@@ -807,22 +800,19 @@ with c2:
     v = calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)")
     render_card("Capacity & Load", "PRB Utilization DL", f"{v:.2f}%", "<=35.0%", f"{s_prb.min():.1f}%", f"{s_prb.max():.1f}%", "Dồi dào dự phòng", "EXCELLENT" if v <= 35.0 else "WARNING")
 with c3:
-    # KPI Handover -> Lấy trung bình thường (mean)
     v = s_intra.mean()
     render_card("Mobility", "Intra-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_intra.min():.1f}%", f"{s_intra.max():.1f}%", "Chuyển giao mượt", "WARNING" if v < 98.0 else "GOOD")
 with c4:
-    # THAY THẾ Inter-RAT HOSR BẰNG Inter-freq HO SR -> Lấy trung bình thường (mean)
     v = s_inter.mean()
     render_card("Mobility", "Inter-freq HO SR", f"{v:.2f}%", ">=98.0%", f"{s_inter.min():.1f}%", f"{s_inter.max():.1f}%", "Chuyển giao liên tần", "WARNING" if v < 98.0 else "GOOD")
 with c5:
-    # KPI Handover/SRVCC -> Lấy trung bình thường (mean)
     v = s_srvcc.mean()
     render_card("SRVCC", "SRVCC Success Rate", f"{v:.2f}%", ">=95.0%", f"{s_srvcc.min():.1f}%", f"{s_srvcc.max():.1f}%", "Đảm bảo thoại 3G", "EXCELLENT" if v >= 95.0 else "WARNING")
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND (NGAY DƯỚI CARDS)
+# 5.5 THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND
 # ---------------------------------------------------------
 st.subheader("📊 Thống Kê Phân Bổ Cell & Traffic Theo Freqband")
 
@@ -832,7 +822,6 @@ fb_cell_counts = pd.DataFrame()
 fb_tf_df = pd.DataFrame()
 
 if cell_col and "Freqband" in filtered_df.columns:
-    # 1. Thống kê Số lượng Cell theo Freqband (Dựa trên Cell duy nhất)
     cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
     fb_cell_counts = cell_fb_df["Freqband"].value_counts().reset_index()
     fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
@@ -852,7 +841,6 @@ if cell_col and "Freqband" in filtered_df.columns:
     with fb_col1:
         st.plotly_chart(fig_fb_cell, use_container_width=True)
 
-    # 2. Thống kê Tổng Traffic theo Freqband
     if "Total Data Traffic Volume (GB)" in filtered_df.columns:
         fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
         fb_tf_df = fb_tf_df.sort_values(by="Freqband")
@@ -882,7 +870,7 @@ if cell_col and "Freqband" in filtered_df.columns:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 6. UNIFIED DUAL-AXIS CHART
+# 6. UNIFIED DUAL-AXIS CHART (ĐÃ FIX LỖI THIẾU CỘT GIỜ)
 # ---------------------------------------------------------
 st.subheader("📈 Biểu Đồ Tương Quan Xu Hướng KPI")
 
@@ -902,9 +890,28 @@ kpi_dict = {
 
 avail_kpis = {k: v for k, v in kpi_dict.items() if v in filtered_df.columns}
 
+# Kiểm tra sự tồn tại của cột Hour
+has_hour = "Hour" in filtered_df.columns
+
 ctrl_col1, ctrl_col2 = st.columns([1, 1])
 with ctrl_col1:
-    time_mode = st.radio("⏱ Thời gian:", ["Chỉ theo giờ (24h Avg)", "Theo Ngày & Giờ (Timeline)"], horizontal=True)
+    time_options = ["Chỉ theo giờ (24h Avg)", "Theo Ngày & Giờ (Timeline)"]
+    # Nếu không có cột Hour, mặc định chuyển sang Timeline và disable tùy chọn 24h Avg
+    if not has_hour:
+        st.info("ℹ️ File không có cột Giờ: Tự động thống kê theo Ngày & Giờ (Timeline). Option '24h Avg' đã làm mờ.")
+        time_mode = st.radio(
+            "⏱ Thời gian:",
+            time_options,
+            index=1,
+            horizontal=True,
+            disabled=True
+        )
+    else:
+        time_mode = st.radio(
+            "⏱ Thời gian:",
+            time_options,
+            horizontal=True
+        )
 
 with ctrl_col2:
     sel_kpi_lbl = st.selectbox("🎯 Chọn KPI kết hợp Traffic:", options=list(avail_kpis.keys()))
@@ -912,44 +919,53 @@ with ctrl_col2:
 sel_kpi_col = avail_kpis[sel_kpi_lbl]
 agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
 
-if time_mode == "Chỉ theo giờ (24h Avg)":
-    c_data = filtered_df.groupby("Hour").agg({
-        "Total Data Traffic Volume (GB)": "sum",
-        sel_kpi_col: agg_func,
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }).reset_index()
+# Từ điển agg an toàn chỉ chứa các cột thực sự tồn tại trong filtered_df
+possible_agg_dict = {
+    "Total Data Traffic Volume (GB)": "sum",
+    sel_kpi_col: agg_func,
+    "DL_Throughput_Mbps": "mean",
+    "UL_Throughput_Mbps": "mean",
+    "Service Drop (all service)": "mean",
+    "Call Setup Success Rate": "mean",
+    "Intra-frequency HO (%)": "mean",
+    "Inter-frequency HO (%)": "mean",
+    "Resource Block Untilizing Rate Downlink (%)": "mean",
+    "VoLTE E-RAB Call Setup Success Rate": "mean",
+    "Call Drop Rate (VoLTE)": "mean",
+    "VoLTE Traffic (Erl)": "sum"
+}
+
+safe_agg_dict = {k: v for k, v in possible_agg_dict.items() if k in filtered_df.columns}
+
+if time_mode == "Chỉ theo giờ (24h Avg)" and has_hour:
+    c_data = filtered_df.groupby("Hour").agg(safe_agg_dict).reset_index()
     x_axis = c_data["Hour"]
     x_title = "Giờ trong ngày (0h - 23h)"
 else:
-    c_data = filtered_df.groupby(["Date", "Hour", "DateTime"]).agg({
-        "Total Data Traffic Volume (GB)": "sum",
-        sel_kpi_col: agg_func,
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }).reset_index().sort_values(by="DateTime")
-    c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m %H:00")
+    group_cols = ["Date"]
+    if has_hour:
+        group_cols.append("Hour")
+    if "DateTime" in filtered_df.columns:
+        group_cols.append("DateTime")
+
+    c_data = filtered_df.groupby(group_cols).agg(safe_agg_dict).reset_index()
+    
+    if "DateTime" in c_data.columns and c_data["DateTime"].notnull().any():
+        c_data = c_data.sort_values(by="DateTime")
+        if has_hour:
+            c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m %H:00")
+        else:
+            c_data["TimeLabel"] = c_data["DateTime"].dt.strftime("%d/%m/%Y")
+    else:
+        c_data["TimeLabel"] = c_data["Date"].astype(str)
+
     x_axis = c_data["TimeLabel"]
     x_title = "Thời Gian (Ngày/Giờ)"
 
 fig = make_subplots(specs=[[{"secondary_y": True}]])
-fig.add_trace(go.Bar(x=x_axis, y=c_data["Total Data Traffic Volume (GB)"], name="Traffic (GB)", marker_color="rgba(53, 162, 235, 0.5)"), secondary_y=False)
+if "Total Data Traffic Volume (GB)" in c_data.columns:
+    fig.add_trace(go.Bar(x=x_axis, y=c_data["Total Data Traffic Volume (GB)"], name="Traffic (GB)", marker_color="rgba(53, 162, 235, 0.5)"), secondary_y=False)
+
 fig.add_trace(go.Scatter(x=x_axis, y=c_data[sel_kpi_col], name=sel_kpi_lbl, mode="lines+markers", line=dict(color="#ff4d4f", width=2.5)), secondary_y=True)
 
 fig.update_layout(title_text=f"📊 Biểu đồ Traffic và {sel_kpi_lbl}", template="plotly_dark", hovermode="x unified", height=420, margin=dict(l=10, r=10, t=40, b=10))
@@ -978,15 +994,19 @@ if "Total Data Traffic Volume (GB)" in filtered_df.columns:
     tab_cell, tab_site = st.tabs(["📱 Top Cell Traffic", "🏢 Top Site Traffic"])
 
     grp_cols = [site_col, cell_col] if site_col and cell_col else ([cell_col] if cell_col else [site_col])
+    
+    cell_agg_dict = {
+        "Total Data Traffic Volume (GB)": "sum",
+        "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
+        "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
+        "DL_Throughput_Mbps": "mean",
+        "Resource Block Untilizing Rate Downlink (%)": "mean",
+    }
+    safe_cell_agg = {k: v for k, v in cell_agg_dict.items() if k in filtered_df.columns}
+
     top_cell_df = (
         filtered_df.groupby(grp_cols)
-        .agg({
-            "Total Data Traffic Volume (GB)": "sum",
-            "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
-            "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
-            "DL_Throughput_Mbps": "mean",
-            "Resource Block Untilizing Rate Downlink (%)": "mean",
-        })
+        .agg(safe_cell_agg)
         .reset_index()
         .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
         .head(int(top_n_traffic))
@@ -999,13 +1019,7 @@ if "Total Data Traffic Volume (GB)" in filtered_df.columns:
     if site_col:
         top_site_df = (
             filtered_df.groupby(site_col)
-            .agg({
-                "Total Data Traffic Volume (GB)": "sum",
-                "Traffic Volumn DL (GB)": "sum" if "Traffic Volumn DL (GB)" in filtered_df.columns else "mean",
-                "Traffic Volume UL (GB)": "sum" if "Traffic Volume UL (GB)" in filtered_df.columns else "mean",
-                "DL_Throughput_Mbps": "mean",
-                "Resource Block Untilizing Rate Downlink (%)": "mean",
-            })
+            .agg(safe_cell_agg)
             .reset_index()
             .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
             .head(int(top_n_traffic))
@@ -1061,7 +1075,9 @@ if cell_col:
             "Total Data Traffic Volume (GB)"
         ] if col in filtered_df.columns
     }
-    cell_agg = filtered_df.groupby([site_col, cell_col]).agg(agg_dict).reset_index()
+    
+    grp_worst_cols = [site_col, cell_col] if site_col else [cell_col]
+    cell_agg = filtered_df.groupby(grp_worst_cols).agg(agg_dict).reset_index()
 
     res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
 
@@ -1091,8 +1107,14 @@ if cell_col:
         "srvcc": s_srvcc.mean(),
     }
 
-    # Luôn tạo c_data_timeline đầy đủ Ngày & Giờ cho Báo cáo PDF
-    c_data_timeline = filtered_df.groupby(["Date", "Hour", "DateTime"]).apply(
+    # Tạo timeline phù hợp tùy vào sự tồn tại của Hour
+    pdf_grp_cols = ["Date"]
+    if has_hour:
+        pdf_grp_cols.append("Hour")
+    if "DateTime" in filtered_df.columns:
+        pdf_grp_cols.append("DateTime")
+
+    c_data_timeline = filtered_df.groupby(pdf_grp_cols).apply(
         lambda g: pd.Series({
             "Total Data Traffic Volume (GB)": g["Total Data Traffic Volume (GB)"].sum() if "Total Data Traffic Volume (GB)" in g else 0,
             "DL_Throughput_Mbps": calc_weighted_avg(g, "DL_Throughput_Mbps"),
@@ -1106,8 +1128,16 @@ if cell_col:
             "Call Drop Rate (VoLTE)": calc_weighted_avg(g, "Call Drop Rate (VoLTE)", weight_col="VoLTE Traffic (Erl)"),
             "VoLTE Traffic (Erl)": g["VoLTE Traffic (Erl)"].sum() if "VoLTE Traffic (Erl)" in g else 0
         })
-    ).reset_index().sort_values(by="DateTime")
-    c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m %H:00")
+    ).reset_index()
+
+    if "DateTime" in c_data_timeline.columns and c_data_timeline["DateTime"].notnull().any():
+        c_data_timeline = c_data_timeline.sort_values(by="DateTime")
+        if has_hour:
+            c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m %H:00")
+        else:
+            c_data_timeline["TimeLabel"] = c_data_timeline["DateTime"].dt.strftime("%d/%m/%Y")
+    else:
+        c_data_timeline["TimeLabel"] = c_data_timeline["Date"].astype(str)
 
     pdf_buf = generate_pdf_report(
         summary_data,
