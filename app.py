@@ -917,7 +917,7 @@ sel_kpi_col = avail_kpis[sel_kpi_lbl]
 agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
 
 if time_mode == "Chỉ theo giờ (24h Avg)":
-    c_data = filtered_df.groupby("Hour").agg({
+    raw_agg_dict = {
         "Total Data Traffic Volume (GB)": "sum",
         sel_kpi_col: agg_func,
         "DL_Throughput_Mbps": "mean",
@@ -930,7 +930,11 @@ if time_mode == "Chỉ theo giờ (24h Avg)":
         "VoLTE E-RAB Call Setup Success Rate": "mean",
         "Call Drop Rate (VoLTE)": "mean",
         "VoLTE Traffic (Erl)": "sum"
-    }).reset_index()
+    }
+    # Chỉ giữ lại các cột có tồn tại trong filtered_df
+    safe_agg_dict = {col: func for col, func in raw_agg_dict.items() if col in filtered_df.columns}
+    
+    c_data = filtered_df.groupby("Hour").agg(safe_agg_dict).reset_index()
     x_axis = c_data["Hour"]
     x_title = "Giờ trong ngày (0h - 23h)"
 else:
