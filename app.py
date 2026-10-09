@@ -240,7 +240,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
     # MỤC I. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
     if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
-        story.append(Paragraph("I. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
+        story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
         story.append(Spacer(1, 2))
         
         fb_img_buf = io.BytesIO()
@@ -298,7 +298,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         story.append(Spacer(1, 10))
 
     # MỤC II. 6 CHARTS XU HƯỚNG
-    story.append(Paragraph("II. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
+    story.append(Paragraph("III. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
     story.append(Spacer(1, 4))
 
     if not hourly_trend_df.empty:
@@ -395,7 +395,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(PageBreak())
 
     # MỤC III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
-    story.append(Paragraph("III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
+    story.append(Paragraph("IV. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
     story.append(Spacer(1, 4))
 
     def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
@@ -470,7 +470,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(PageBreak())
 
     # MỤC IV. WORST 10 CHO CÁC KPI
-    story.append(Paragraph("IV. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)", h2_style))
+    story.append(Paragraph("V. DANH SÁCH WORST 10 CELLS CHO CÁC KPI CHÍNH (CSSR, DCR, HANDOVER)", h2_style))
     story.append(Spacer(1, 4))
 
     if not worst10_cssr.empty:
