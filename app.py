@@ -157,7 +157,7 @@ st.markdown(
 # 2. FILE MẪU & PDF REPORT
 # ---------------------------------------------------------
 def get_sample_file_bytes():
-    for fname in ["4G_Sample.csv", "4G.csv"]:
+    for fname in ["4G_Sample - Copy.csv", "4G_Sample.csv", "4G.csv"]:
         if os.path.exists(fname):
             with open(fname, "rb") as f:
                 return f.read(), fname
@@ -589,25 +589,21 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 def process_data(file_input):
     df = pd.read_csv(file_input)
 
-    # Chuẩn hóa tên cột (xóa khoảng trắng thừa)
+    # Chuẩn hóa tên cột
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Danh sách mapping Alias linh hoạt cho các tên cột
+    # Mapping Alias cột
     alias_map = {
-        # Time / Date
         "DateTime": ["DateTime", "Thời gian", "Time", "timestamp", "Date", "Ngày"],
         "Hour": ["Giờ", "Hour", "hour"],
 
-        # Site / Cell
         "Site Name": ["Site Name", "Site", "Tên Site", "eNodeB Name", "eNodeB", "NodeB Name"],
         "Tên đối tượng": ["Tên đối tượng", "Cell Name", "Cell", "Tên Cell", "Object Name", "CellId"],
 
-        # Traffic
         "Total Data Traffic Volume (GB)": ["Total Data Traffic Volume (GB)", "Total Data Traffic (GB)", "Data Traffic (GB)", "Total Traffic (GB)", "Traffic (GB)", "Traffic_GB"],
         "Traffic Volumn DL (GB)": ["Traffic Volumn DL (GB)", "Traffic Volume DL (GB)", "DL Traffic (GB)", "Data Traffic DL (GB)", "Traffic DL (GB)"],
         "Traffic Volume UL (GB)": ["Traffic Volume UL (GB)", "Traffic Volumn UL (GB)", "UL Traffic (GB)", "Data Traffic UL (GB)", "Traffic UL (GB)"],
 
-        # PRB Utilization DL
         "Resource Block Untilizing Rate Downlink (%)": [
             "Resource Block Untilizing Rate Downlink (%)",
             "Resource Block Utilizing Rate Downlink (%)",
@@ -620,18 +616,15 @@ def process_data(file_input):
             "DL PRB Utilization Rate (%)"
         ],
 
-        # Quality & Accessibility
         "CQI_4G": ["CQI_4G", "CQI 4G Index (%)", "CQI Index", "CQI >= 7 (%)", "CQI 4G", "CQI"],
         "Call Setup Success Rate": ["Call Setup Success Rate", "CSSR (%)", "Call Setup Success Rate (%)", "CSSR"],
         "Service Drop (all service)": ["Service Drop (all service)", "Service Drop Rate (%)", "Service Drop Rate", "DCR (%)", "Call Drop Rate (%)", "Drop Rate (%)"],
 
-        # Handover
         "Intra-frequency HO (%)": ["Intra-frequency HO (%)", "Intra-freq HO SR (%)", "Intra HO (%)", "Intra-frequency HO Success Rate (%)"],
         "Inter-frequency HO (%)": ["Inter-frequency HO (%)", "Inter-freq HO SR (%)", "Inter HO (%)", "Inter-frequency HO Success Rate (%)"],
         "Inter-RAT HOSR (LTE to WCDMA) (%)": ["Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-RAT HOSR (%)", "IRAT HO (%)"],
         "SRVCC Success Rate (LTE to WCDMA)": ["SRVCC Success Rate (LTE to WCDMA)", "SRVCC Success Rate (%)", "SRVCC SR (%)"],
 
-        # VoLTE
         "Call Drop Rate (VoLTE)": ["Call Drop Rate (VoLTE)", "VoLTE Drop Rate (%)", "VoLTE DCR (%)"],
         "VoLTE E-RAB Call Setup Success Rate": ["VoLTE E-RAB Call Setup Success Rate", "VoLTE CSSR (%)", "VoLTE Call Setup Success Rate (%)"],
         "VoLTE Traffic (Erl)": ["VoLTE Traffic (Erl)", "VoLTE Traffic"]
@@ -644,9 +637,7 @@ def process_data(file_input):
                     df.rename(columns={alias: std_col}, inplace=True)
                     break
 
-    # ---------------------------------------------------------
-    # XỬ LÝ CHÍNH XÁC USER DL & UL THROUGHPUT TỪ CỘT KBPS
-    # ---------------------------------------------------------
+    # Trích xuất và Quy đổi Throughput Kbps -> Mbps
     dl_kbps_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Downlink Average Throughput(Kbps)",
@@ -667,7 +658,6 @@ def process_data(file_input):
     found_dl_kbps = next((c for c in dl_kbps_cols if c in df.columns), None)
     if found_dl_kbps:
         df["User Downlink Average Throughput (Kbps)"] = pd.to_numeric(df[found_dl_kbps], errors="coerce")
-        # Luôn quy đổi chính xác từ Kbps sang Mbps (chia 1000)
         df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
     else:
         dl_mbps_cols = ["DL_Throughput_Mbps", "User Downlink Average Throughput (Mbps)", "DL Throughput (Mbps)", "User DL Throughput (Mbps)"]
@@ -679,7 +669,6 @@ def process_data(file_input):
     found_ul_kbps = next((c for c in ul_kbps_cols if c in df.columns), None)
     if found_ul_kbps:
         df["User Uplink Average Throughput (Kbps)"] = pd.to_numeric(df[found_ul_kbps], errors="coerce")
-        # Luôn quy đổi chính xác từ Kbps sang Mbps (chia 1000)
         df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"] / 1000.0
     else:
         ul_mbps_cols = ["UL_Throughput_Mbps", "User Uplink Average Throughput (Mbps)", "UL Throughput (Mbps)", "User UL Throughput (Mbps)"]
@@ -688,24 +677,20 @@ def process_data(file_input):
             df["UL_Throughput_Mbps"] = pd.to_numeric(df[found_ul_mbps], errors="coerce")
             df["User Uplink Average Throughput (Kbps)"] = df["UL_Throughput_Mbps"] * 1000.0
 
-    # Ghi nhận sự tồn tại của cột Giờ nguyên bản
-    has_hour_col = any(c in df.columns for c in ["Giờ", "Hour", "hour"])
-    df["_has_hour_col"] = has_hour_col
-
-    # Parse Date/Time
+    # Parse DateTime & Hour
     if "DateTime" in df.columns:
         df["DateTime"] = pd.to_datetime(df["DateTime"], dayfirst=True, errors="coerce")
         df["DateTime"] = df["DateTime"].fillna(pd.Timestamp.now())
         df["Date"] = df["DateTime"].dt.date
+        df["Hour"] = df["DateTime"].dt.hour
     else:
         df["DateTime"] = pd.Timestamp.now()
         df["Date"] = df["DateTime"].dt.date
-
-    # Parse Hour
-    if "Hour" in df.columns and has_hour_col:
-        df["Hour"] = pd.to_numeric(df["Hour"], errors="coerce").fillna(0).astype(int)
-    else:
         df["Hour"] = 0
+
+    # Kiểm tra xem dữ liệu có chứa thông tin giờ thực sự không
+    has_hour = df["Hour"].nunique() > 1 or any(c in df.columns for c in ["Giờ", "Hour", "hour"])
+    df["_has_hour_col"] = has_hour
 
     # Freqband
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
@@ -718,7 +703,6 @@ def process_data(file_input):
             return "N/A"
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
 
-    # Ép kiểu số toàn bộ các cột chỉ số
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Uplink Average Throughput (Kbps)",
@@ -747,6 +731,72 @@ def process_data(file_input):
     return df
 
 
+# Hàm gom nhóm tính Trung bình Trọng số chuẩn xác
+def aggregate_kpis(df_in, group_cols):
+    """Gom nhóm và tính trung bình có trọng số theo Traffic chuẩn cho từng KPI"""
+    def calc_group(g):
+        res = {}
+        tot_tf = g['Total Data Traffic Volume (GB)'].sum() if 'Total Data Traffic Volume (GB)' in g else 0
+        dl_tf = g['Traffic Volumn DL (GB)'].sum() if 'Traffic Volumn DL (GB)' in g else tot_tf
+        ul_tf = g['Traffic Volume UL (GB)'].sum() if 'Traffic Volume UL (GB)' in g else tot_tf
+
+        res['Total Data Traffic Volume (GB)'] = tot_tf
+        if 'Traffic Volumn DL (GB)' in g:
+            res['Traffic Volumn DL (GB)'] = dl_tf
+        if 'Traffic Volume UL (GB)' in g:
+            res['Traffic Volume UL (GB)'] = ul_tf
+
+        # DL Throughput trọng số DL Traffic
+        if 'DL_Throughput_Mbps' in g:
+            if dl_tf > 0 and 'Traffic Volumn DL (GB)' in g:
+                res['DL_Throughput_Mbps'] = (g['DL_Throughput_Mbps'] * g['Traffic Volumn DL (GB)']).sum() / dl_tf
+            elif tot_tf > 0 and 'Total Data Traffic Volume (GB)' in g:
+                res['DL_Throughput_Mbps'] = (g['DL_Throughput_Mbps'] * g['Total Data Traffic Volume (GB)']).sum() / tot_tf
+            else:
+                res['DL_Throughput_Mbps'] = g['DL_Throughput_Mbps'].mean()
+
+        # UL Throughput trọng số UL Traffic
+        if 'UL_Throughput_Mbps' in g:
+            if ul_tf > 0 and 'Traffic Volume UL (GB)' in g:
+                res['UL_Throughput_Mbps'] = (g['UL_Throughput_Mbps'] * g['Traffic Volume UL (GB)']).sum() / ul_tf
+            elif tot_tf > 0 and 'Total Data Traffic Volume (GB)' in g:
+                res['UL_Throughput_Mbps'] = (g['UL_Throughput_Mbps'] * g['Total Data Traffic Volume (GB)']).sum() / tot_tf
+            else:
+                res['UL_Throughput_Mbps'] = g['UL_Throughput_Mbps'].mean()
+
+        # Các KPI chất lượng & tải trọng số Total Traffic
+        for kpi in ['Call Setup Success Rate', 'Service Drop (all service)', 'CQI_4G', 'Resource Block Untilizing Rate Downlink (%)']:
+            if kpi in g:
+                valid_m = g[kpi].notnull() & g['Total Data Traffic Volume (GB)'].notnull()
+                g_v = g[valid_m]
+                w_sum = g_v['Total Data Traffic Volume (GB)'].sum()
+                if w_sum > 0:
+                    res[kpi] = (g_v[kpi] * g_v['Total Data Traffic Volume (GB)']).sum() / w_sum
+                else:
+                    res[kpi] = g[kpi].mean()
+
+        for kpi in ['Intra-frequency HO (%)', 'Inter-frequency HO (%)', 'SRVCC Success Rate (LTE to WCDMA)']:
+            if kpi in g:
+                res[kpi] = g[kpi].mean()
+
+        if 'VoLTE Traffic (Erl)' in g:
+            res['VoLTE Traffic (Erl)'] = g['VoLTE Traffic (Erl)'].sum()
+
+        volte_tf = res.get('VoLTE Traffic (Erl)', 0)
+        for kpi in ['VoLTE E-RAB Call Setup Success Rate', 'Call Drop Rate (VoLTE)']:
+            if kpi in g:
+                valid_m = g[kpi].notnull()
+                g_v = g[valid_m]
+                if volte_tf > 0 and 'VoLTE Traffic (Erl)' in g_v:
+                    res[kpi] = (g_v[kpi] * g_v['VoLTE Traffic (Erl)']).sum() / volte_tf
+                else:
+                    res[kpi] = g_v[kpi].mean() if not g_v.empty else 0.0
+
+        return pd.Series(res)
+
+    return df_in.groupby(group_cols, group_keys=False).apply(calc_group).reset_index()
+
+
 # ---------------------------------------------------------
 # 4. SIDEBAR
 # ---------------------------------------------------------
@@ -768,6 +818,9 @@ up_file = st.sidebar.file_uploader("📂 Tải CSV KPI:", type=["csv"])
 if up_file is not None:
     st.sidebar.success("✅ Đã tải file!")
     df = process_data(up_file)
+elif os.path.exists("4G_Sample - Copy.csv"):
+    st.sidebar.info("ℹ️ Đang dùng dữ liệu mẫu 4G_Sample - Copy.csv")
+    df = process_data("4G_Sample - Copy.csv")
 elif os.path.exists("4G_Sample.csv"):
     st.sidebar.info("ℹ️ Đang dùng dữ liệu mẫu 4G_Sample.csv")
     df = process_data("4G_Sample.csv")
@@ -840,7 +893,6 @@ def render_card(cat, title, val, tgt, min_v, max_v, remark, stt="good"):
 
 
 def calc_weighted_avg(df_in, kpi_col, weight_col=None):
-    """Tính trung bình có trọng số theo Traffic thích hợp"""
     if kpi_col not in df_in.columns:
         return 0.0
 
@@ -1001,33 +1053,21 @@ if avail_kpis:
 
     sel_kpi_col = avail_kpis[sel_kpi_lbl]
 
-    agg_candidates = {
-        "Total Data Traffic Volume (GB)": "sum",
-        sel_kpi_col: "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean",
-        "DL_Throughput_Mbps": "mean",
-        "UL_Throughput_Mbps": "mean",
-        "Service Drop (all service)": "mean",
-        "Call Setup Success Rate": "mean",
-        "Intra-frequency HO (%)": "mean",
-        "Inter-frequency HO (%)": "mean",
-        "Resource Block Untilizing Rate Downlink (%)": "mean",
-        "VoLTE E-RAB Call Setup Success Rate": "mean",
-        "Call Drop Rate (VoLTE)": "mean",
-        "VoLTE Traffic (Erl)": "sum"
-    }
-
-    agg_dict_safe = {col: func for col, func in agg_candidates.items() if col in filtered_df.columns}
-
     if time_mode == "Chỉ theo giờ (24h Avg)":
-        c_data = filtered_df.groupby("Hour").agg(agg_dict_safe).reset_index() if "Hour" in filtered_df.columns and has_hour else filtered_df.agg(agg_dict_safe).to_frame().T
-        x_axis = c_data["Hour"] if "Hour" in c_data.columns and has_hour else ["Tất cả ngày"]
-        x_title = "Giờ trong ngày (0h - 23h)" if has_hour else "Tổng hợp"
+        if has_hour and "Hour" in filtered_df.columns:
+            c_data = aggregate_kpis(filtered_df, ["Hour"])
+            x_axis = c_data["Hour"]
+            x_title = "Giờ trong ngày (0h - 23h)"
+        else:
+            c_data = aggregate_kpis(filtered_df, ["Date"])
+            x_axis = pd.to_datetime(c_data["Date"]).dt.strftime("%d/%m")
+            x_title = "Ngày"
     else:
         group_cols = [col for col in ["Date", "Hour", "DateTime"] if col in filtered_df.columns]
         if not has_hour and "Hour" in group_cols:
             group_cols.remove("Hour")
         if group_cols:
-            c_data = filtered_df.groupby(group_cols).agg(agg_dict_safe).reset_index()
+            c_data = aggregate_kpis(filtered_df, group_cols)
             if "DateTime" in c_data.columns:
                 c_data = c_data.sort_values(by="DateTime")
                 fmt_str = "%d/%m %H:00" if has_hour else "%d/%m"
@@ -1035,10 +1075,10 @@ if avail_kpis:
             elif "Date" in c_data.columns:
                 c_data["TimeLabel"] = pd.to_datetime(c_data["Date"]).dt.strftime("%d/%m")
             else:
-                c_data["TimeLabel"] = c_data["Hour"].astype(str) + ":00" if "Hour" in c_data.columns else "Timeline"
+                c_data["TimeLabel"] = c_data["Hour"].astype(str) + ":00"
         else:
-            c_data = filtered_df.agg(agg_dict_safe).to_frame().T
-            c_data["TimeLabel"] = "Default"
+            c_data = aggregate_kpis(filtered_df, ["Date"])
+            c_data["TimeLabel"] = "Timeline"
 
         x_axis = c_data["TimeLabel"]
         x_title = "Thời Gian (Ngày/Giờ)" if has_hour else "Thời Gian (Ngày)"
@@ -1050,7 +1090,7 @@ if avail_kpis:
         fig.add_trace(go.Scatter(x=x_axis, y=c_data[sel_kpi_col], name=sel_kpi_lbl, mode="lines+markers", line=dict(color="#ff4d4f", width=2.5)), secondary_y=True)
 
     fig.update_layout(title_text=f"📊 Biểu đồ Traffic và {sel_kpi_lbl}", template="plotly_dark", hovermode="x unified", height=420, margin=dict(l=10, r=10, t=40, b=10))
-    fig.update_xaxes(title_text=x_title, type="category" if time_mode != "Chỉ theo giờ (24h Avg)" or not has_hour else None)
+    fig.update_xaxes(title_text=x_title, type="category")
     fig.update_yaxes(title_text="Traffic (GB)", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text=sel_kpi_lbl, secondary_y=True, showgrid=True, gridcolor="rgba(255,255,255,0.1)")
 
@@ -1075,23 +1115,10 @@ top_site_df = pd.DataFrame()
 if "Total Data Traffic Volume (GB)" in filtered_df.columns:
     tab_cell, tab_site = st.tabs(["📱 Top Cell Traffic", "🏢 Top Site Traffic"])
 
-    top_agg_safe = {}
-    for col, func in [
-        ("Total Data Traffic Volume (GB)", "sum"),
-        ("Traffic Volumn DL (GB)", "sum"),
-        ("Traffic Volume UL (GB)", "sum"),
-        ("DL_Throughput_Mbps", "mean"),
-        ("Resource Block Untilizing Rate Downlink (%)", "mean"),
-    ]:
-        if col in filtered_df.columns:
-            top_agg_safe[col] = func
-
     grp_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
-    if grp_cols and top_agg_safe:
+    if grp_cols:
         top_cell_df = (
-            filtered_df.groupby(grp_cols)
-            .agg(top_agg_safe)
-            .reset_index()
+            aggregate_kpis(filtered_df, grp_cols)
             .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
             .head(int(top_n_traffic))
         )
@@ -1100,11 +1127,9 @@ if "Total Data Traffic Volume (GB)" in filtered_df.columns:
             st.markdown(f"**Top {top_n_traffic} Cell có lưu lượng cao nhất:**")
             st.dataframe(top_cell_df, use_container_width=True)
 
-    if site_col and site_col in filtered_df.columns and top_agg_safe:
+    if site_col and site_col in filtered_df.columns:
         top_site_df = (
-            filtered_df.groupby(site_col)
-            .agg(top_agg_safe)
-            .reset_index()
+            aggregate_kpis(filtered_df, [site_col])
             .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
             .head(int(top_n_traffic))
         )
@@ -1147,20 +1172,9 @@ if cell_col and cell_col in filtered_df.columns:
 
         target_col, sort_ascending = available_kpi_options[sel_worst_kpi_lbl]
 
-        agg_dict_worst = {}
-        for col in [
-            "Call Setup Success Rate", "Service Drop (all service)",
-            "Intra-frequency HO (%)", "Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-frequency HO (%)",
-            "DL_Throughput_Mbps", "UL_Throughput_Mbps", "CQI_4G",
-            "Resource Block Untilizing Rate Downlink (%)", "Call Drop Rate (VoLTE)",
-            "Total Data Traffic Volume (GB)"
-        ]:
-            if col in filtered_df.columns:
-                agg_dict_worst[col] = "sum" if col == "Total Data Traffic Volume (GB)" else "mean"
-        
         grp_worst_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
-        if grp_worst_cols and agg_dict_worst:
-            cell_agg = filtered_df.groupby(grp_worst_cols).agg(agg_dict_worst).reset_index()
+        if grp_worst_cols:
+            cell_agg = aggregate_kpis(filtered_df, grp_worst_cols)
 
             res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
 
@@ -1194,15 +1208,7 @@ if cell_col and cell_col in filtered_df.columns:
             if not has_hour and "Hour" in timeline_grp:
                 timeline_grp.remove("Hour")
             if timeline_grp:
-                c_data_timeline = filtered_df.groupby(timeline_grp).agg({
-                    col: ("sum" if "Traffic" in col or "Erl" in col else "mean")
-                    for col in [
-                        "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "UL_Throughput_Mbps",
-                        "Service Drop (all service)", "Call Setup Success Rate", "Intra-frequency HO (%)",
-                        "Inter-frequency HO (%)", "Resource Block Untilizing Rate Downlink (%)",
-                        "VoLTE E-RAB Call Setup Success Rate", "Call Drop Rate (VoLTE)", "VoLTE Traffic (Erl)"
-                    ] if col in filtered_df.columns
-                }).reset_index()
+                c_data_timeline = aggregate_kpis(filtered_df, timeline_grp)
 
                 if "DateTime" in c_data_timeline.columns:
                     c_data_timeline = c_data_timeline.sort_values(by="DateTime")
