@@ -897,8 +897,7 @@ ctrl_col1, ctrl_col2 = st.columns([1, 1])
 with ctrl_col1:
     time_options = ["Chỉ theo giờ (24h Avg)", "Theo Ngày & Giờ (Timeline)"]
     # Nếu không có cột Hour, mặc định chuyển sang Timeline và disable tùy chọn 24h Avg
-    if not has_hour:
-        st.info("ℹ️ File không có cột Giờ: Tự động thống kê theo Ngày & Giờ (Timeline). Option '24h Avg' đã làm mờ.")
+    if not has_hour:        
         time_mode = st.radio(
             "⏱ Thời gian:",
             time_options,
