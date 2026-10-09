@@ -11,7 +11,6 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 import matplotlib
-import matplotlib.rcParams
 import matplotlib.pyplot as plt
 
 from reportlab.lib import colors
