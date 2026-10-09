@@ -157,7 +157,7 @@ st.markdown(
 
 
 # ---------------------------------------------------------
-# 2. FILE MẪU & PDF REPORT ĐẦY ĐỦ CARDS, FREQBAND CHARTS, 6 CHARTS, TOP 10 & WORST 10
+# 2. FILE MẪU & PDF REPORT EXPORT
 # ---------------------------------------------------------
 def get_sample_file_bytes():
     """Đọc trực tiếp tệp 4G_Sample.csv có sẵn trên GitHub/thư mục dự án"""
@@ -400,9 +400,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not top10_cells.empty:
         story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
         story.append(Spacer(1, 2))
-        tr_cols = [c for c in top10_cells.columns if c in ["Site Name", "Tên đối tượng", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:5]
-        tr_sub = top10_cells[tr_cols].head(10)
-
+        
         tr_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
             p_cell("Cell Name", True, color_hex='#ffffff'),
@@ -410,13 +408,24 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("DL Thrp (Mbps)", True, color_hex='#ffffff'),
             p_cell("PRB DL (%)", True, color_hex='#ffffff')
         ]]
-        for _, row in tr_sub.iterrows():
+        
+        site_col_name = "Site Name" if "Site Name" in top10_cells.columns else None
+        cell_col_name = "Tên đối tượng" if "Tên đối tượng" in top10_cells.columns else ("Cell Name" if "Cell Name" in top10_cells.columns else None)
+
+        for _, row in top10_cells.head(10).iterrows():
+            s_name = str(row.get(site_col_name, "N/A")) if site_col_name else "N/A"
+            c_name = str(row.get(cell_col_name, "N/A")) if cell_col_name else "N/A"
+            
+            tf_val = row.get("Total Data Traffic Volume (GB)", 0)
+            dl_val = row.get("DL_Throughput_Mbps", 0)
+            prb_val = row.get("Resource Block Untilizing Rate Downlink (%)", 0)
+            
             tr_data.append([
-                p_cell(row.iloc[0]),
-                p_cell(row.iloc[1]),
-                p_cell(f"{row.iloc[2]:,.2f}"),
-                p_cell(f"{row.iloc[3]:.2f}"),
-                p_cell(f"{row.iloc[4]:.2f}")
+                p_cell(s_name),
+                p_cell(c_name),
+                p_cell(f"{tf_val:,.2f}" if pd.notnull(tf_val) else "0.00"),
+                p_cell(f"{dl_val:.2f}" if pd.notnull(dl_val) else "0.00"),
+                p_cell(f"{prb_val:.2f}" if pd.notnull(prb_val) else "0.00")
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
@@ -433,8 +442,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not top10_sites.empty:
         story.append(Paragraph("<b>2. Top 10 Site có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
         story.append(Spacer(1, 2))
-        ts_cols = [c for c in top10_sites.columns if c in ["Site Name", "Total Data Traffic Volume (GB)", "DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]][:4]
-        ts_sub = top10_sites[ts_cols].head(10)
 
         ts_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -442,12 +449,20 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("DL Thrp Avg (Mbps)", True, color_hex='#ffffff'),
             p_cell("PRB DL Avg (%)", True, color_hex='#ffffff')
         ]]
-        for _, row in ts_sub.iterrows():
+        
+        site_col_name = "Site Name" if "Site Name" in top10_sites.columns else None
+
+        for _, row in top10_sites.head(10).iterrows():
+            s_name = str(row.get(site_col_name, "N/A")) if site_col_name else "N/A"
+            tf_val = row.get("Total Data Traffic Volume (GB)", 0)
+            dl_val = row.get("DL_Throughput_Mbps", 0)
+            prb_val = row.get("Resource Block Untilizing Rate Downlink (%)", 0)
+
             ts_data.append([
-                p_cell(row.iloc[0]),
-                p_cell(f"{row.iloc[1]:,.2f}"),
-                p_cell(f"{row.iloc[2]:.2f}"),
-                p_cell(f"{row.iloc[3]:.2f}")
+                p_cell(s_name),
+                p_cell(f"{tf_val:,.2f}" if pd.notnull(tf_val) else "0.00"),
+                p_cell(f"{dl_val:.2f}" if pd.notnull(dl_val) else "0.00"),
+                p_cell(f"{prb_val:.2f}" if pd.notnull(prb_val) else "0.00")
             ])
 
         t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
@@ -470,7 +485,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not worst10_cssr.empty:
         story.append(Paragraph("<b>1. Worst 10 Cells theo Tỷ lệ Thiết lập Cuộc gọi Thấp (CSSR):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_sub = worst10_cssr.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -478,10 +492,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("CSSR (%)", True, color_hex='#ffffff'),
             p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
-        for _, row in w_sub.iterrows():
+        for _, row in worst10_cssr.head(10).iterrows():
             w_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(row.get("Site Name", "N/A")),
+                p_cell(row.get("Tên đối tượng", row.get("Cell Name", "N/A"))),
                 p_cell(f"{row.get('Call Setup Success Rate', 0):.2f}%"),
                 p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
@@ -499,7 +513,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not worst10_dcr.empty:
         story.append(Paragraph("<b>2. Worst 10 Cells theo Tỷ lệ Rớt Dịch vụ Cao (DCR / Drop Rate):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_sub = worst10_dcr.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -507,10 +520,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("Service Drop Rate (%)", True, color_hex='#ffffff'),
             p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
-        for _, row in w_sub.iterrows():
+        for _, row in worst10_dcr.head(10).iterrows():
             w_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(row.get("Site Name", "N/A")),
+                p_cell(row.get("Tên đối tượng", row.get("Cell Name", "N/A"))),
                 p_cell(f"{row.get('Service Drop (all service)', 0):.3f}%"),
                 p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
@@ -528,7 +541,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not worst10_intra_ho.empty:
         story.append(Paragraph("<b>3. Worst 10 Cells theo Tỷ lệ Chuyển giao Nội băng Thấp (Intra-freq HO):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_sub = worst10_intra_ho.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -536,10 +548,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("Intra-freq HO (%)", True, color_hex='#ffffff'),
             p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
-        for _, row in w_sub.iterrows():
+        for _, row in worst10_intra_ho.head(10).iterrows():
             w_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(row.get("Site Name", "N/A")),
+                p_cell(row.get("Tên đối tượng", row.get("Cell Name", "N/A"))),
                 p_cell(f"{row.get('Intra-frequency HO (%)', 0):.2f}%"),
                 p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
@@ -557,7 +569,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     if not worst10_inter_ho.empty:
         story.append(Paragraph("<b>4. Worst 10 Cells theo Tỷ lệ Chuyển giao Liên tần Thấp (Inter-freq HO):</b>", norm_style))
         story.append(Spacer(1, 2))
-        w_sub = worst10_inter_ho.head(10)
         
         w_data = [[
             p_cell("Site Name", True, color_hex='#ffffff'),
@@ -565,10 +576,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             p_cell("Inter-freq HO (%)", True, color_hex='#ffffff'),
             p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
         ]]
-        for _, row in w_sub.iterrows():
+        for _, row in worst10_inter_ho.head(10).iterrows():
             w_data.append([
-                p_cell(row.get("Site Name", "")),
-                p_cell(row.get("Tên đối tượng", "")),
+                p_cell(row.get("Site Name", "N/A")),
+                p_cell(row.get("Tên đối tượng", row.get("Cell Name", "N/A"))),
                 p_cell(f"{row.get('Inter-frequency HO (%)', 0):.2f}%"),
                 p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
             ])
@@ -588,22 +599,54 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
 
 # ---------------------------------------------------------
-# 3. DATA PROCESSING
+# 3. DATA PROCESSING & VALIDATION (ĐÃ BỔ SUNG KIỂM TRA FILE HỢP LỆ)
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
-    df = pd.read_csv(file_input)
+    try:
+        df = pd.read_csv(file_input)
+    except Exception as e:
+        st.error(f"❌ Không thể đọc file CSV. Vui lòng kiểm tra định dạng tệp! Chi tiết: {e}")
+        st.stop()
 
+    # 1. Kiểm tra Cột Thời Gian (Bắt buộc phải có 1 trong các cột thời gian)
     t_cols = ["Thời gian", "Time", "DateTime", "timestamp"]
     t_col = next((c for c in t_cols if c in df.columns), None)
 
-    if t_col:
-        df["DateTime"] = pd.to_datetime(df[t_col], dayfirst=True, errors="coerce")
-        df["Date"] = df["DateTime"].dt.date
-    else:
-        st.error("❌ Thiếu cột Thời gian!")
+    if not t_col:
+        st.error(
+            "❌ **Cấu trúc File không hợp lệ!**\n\n"
+            "File CSV của bạn **thiếu Cột Thời gian**.\n\n"
+            "👉 **Yêu cầu:** File phải chứa ít nhất một trong các cột tên: `Thời gian`, `Time`, `DateTime`, hoặc `timestamp`.\n"
+            "👉 Vui lòng tải **File Mẫu (4G_Sample.csv)** ở thanh bên trái để đối chiếu cấu trúc chuẩn."
+        )
         st.stop()
 
+    df["DateTime"] = pd.to_datetime(df[t_col], dayfirst=True, errors="coerce")
+    if df["DateTime"].isna().all():
+        st.error(
+            "❌ **Định dạng Thời gian không đúng!**\n\n"
+            f"Cột `{t_col}` không chứa dữ liệu ngày/giờ hợp lệ.\n"
+            "Vui lòng điều chỉnh định dạng thời gian (ví dụ: `DD/MM/YYYY HH:MM` hoặc `YYYY-MM-DD`)."
+        )
+        st.stop()
+
+    df["Date"] = df["DateTime"].dt.date
+
+    # 2. Kiểm tra Cột Đối tượng (Cell Name / Site Name)
+    cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
+    site_col_name = "Site Name" if "Site Name" in df.columns else None
+
+    if not cell_col_name and not site_col_name:
+        st.error(
+            "❌ **Cấu trúc File không hợp lệ!**\n\n"
+            "File CSV của bạn **thiếu Cột Đối tượng (Site/Cell)**.\n\n"
+            "👉 **Yêu cầu:** File phải chứa cột `Tên đối tượng` (hoặc `Cell Name`), hoặc cột `Site Name`.\n"
+            "👉 Vui lòng kiểm tra lại cấu trúc file mẫu."
+        )
+        st.stop()
+
+    # 3. Kiểm tra Cột Giờ (Hour - Không bắt buộc)
     h_cols = ["Giờ", "Hour", "hour"]
     h_col = next((c for c in h_cols if c in df.columns), None)
     if h_col:
@@ -611,19 +654,19 @@ def process_data(file_input):
     elif df["DateTime"].dt.hour.notnull().any() and (df["DateTime"].dt.hour != 0).any():
         df["Hour"] = df["DateTime"].dt.hour
 
-    # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
-    cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
+    # 4. Trích xuất Freqband nếu có tên Cell
     if cell_col_name:
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
             if len(s) >= 11:
-                char = s[10] # Ký tự thứ 11 (index 10)
+                char = s[10] # Ký tự thứ 11
                 return f"F{char}" if not char.startswith("F") else char
             return "N/A"
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
     else:
         df["Freqband"] = "N/A"
 
+    # 5. Ép kiểu dữ liệu số cho các chỉ số KPI
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Uplink Average Throughput (Kbps)",
@@ -643,9 +686,17 @@ def process_data(file_input):
         "VoLTE Traffic (Erl)",
     ]
 
-    for col in num_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+    existing_num_cols = [c for c in num_cols if c in df.columns]
+    if not existing_num_cols:
+        st.error(
+            "❌ **Không tìm thấy chỉ số KPI nào hợp lệ!**\n\n"
+            "File CSV nhập vào không khớp với các tên cột chỉ số KPI chuẩn (Traffic, CSSR, Drop Rate, Throughput...).\n"
+            "👉 Vui lòng tham khảo file mẫu để đổi tên cột tương ứng."
+        )
+        st.stop()
+
+    for col in existing_num_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     if "User Downlink Average Throughput (Kbps)" in df.columns:
         df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
@@ -722,7 +773,7 @@ if filtered_df.empty:
 # ---------------------------------------------------------
 # 5. HEADER & CARDS
 # ---------------------------------------------------------
-cell_col = "Tên đối tượng" if "Tên đối tượng" in df.columns else None
+cell_col = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
 num_cells = filtered_df[cell_col].nunique() if cell_col else 0
 num_sites = filtered_df[site_col].nunique() if site_col else 0
 
@@ -870,7 +921,7 @@ if cell_col and "Freqband" in filtered_df.columns:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 6. UNIFIED DUAL-AXIS CHART (ĐÃ FIX LỖI THIẾU CỘT GIỜ)
+# 6. UNIFIED DUAL-AXIS CHART
 # ---------------------------------------------------------
 st.subheader("📈 Biểu Đồ Tương Quan Xu Hướng KPI")
 
@@ -890,14 +941,13 @@ kpi_dict = {
 
 avail_kpis = {k: v for k, v in kpi_dict.items() if v in filtered_df.columns}
 
-# Kiểm tra sự tồn tại của cột Hour
 has_hour = "Hour" in filtered_df.columns
 
 ctrl_col1, ctrl_col2 = st.columns([1, 1])
 with ctrl_col1:
     time_options = ["Chỉ theo giờ (24h Avg)", "Theo Ngày & Giờ (Timeline)"]
-    # Nếu không có cột Hour, mặc định chuyển sang Timeline và disable tùy chọn 24h Avg
-    if not has_hour:        
+    if not has_hour:
+        st.info("ℹ️ File không có cột Giờ: Tự động thống kê theo Ngày & Giờ (Timeline). Option '24h Avg' đã làm mờ.")
         time_mode = st.radio(
             "⏱ Thời gian:",
             time_options,
@@ -918,7 +968,6 @@ with ctrl_col2:
 sel_kpi_col = avail_kpis[sel_kpi_lbl]
 agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
 
-# Từ điển agg an toàn chỉ chứa các cột thực sự tồn tại trong filtered_df
 possible_agg_dict = {
     "Total Data Traffic Volume (GB)": "sum",
     sel_kpi_col: agg_func,
@@ -1106,7 +1155,6 @@ if cell_col:
         "srvcc": s_srvcc.mean(),
     }
 
-    # Tạo timeline phù hợp tùy vào sự tồn tại của Hour
     pdf_grp_cols = ["Date"]
     if has_hour:
         pdf_grp_cols.append("Hour")
