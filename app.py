@@ -170,11 +170,9 @@ def calc_weighted_avg_fast(df_in, kpi_cols, group_cols, weight_col="Total Data T
     has_weight = weight_col in df_in.columns
     cols_to_use = [c for c in kpi_cols if c in df_in.columns]
     
-    # Tạo copy các cột cần thiết
     temp_df = df_in[group_cols + cols_to_use + ([weight_col] if has_weight else [])].copy()
     
     if has_weight:
-        # Nhân giá trị KPI với Traffic trước khi gom nhóm
         for col in cols_to_use:
             temp_df[f"_weighted_{col}"] = temp_df[col] * temp_df[weight_col]
         
@@ -183,7 +181,6 @@ def calc_weighted_avg_fast(df_in, kpi_cols, group_cols, weight_col="Total Data T
         
         grouped = temp_df.groupby(group_cols, as_index=False).agg(agg_dict)
         
-        # Chia lại cho tổng Traffic
         for col in cols_to_use:
             grouped[col] = np.where(
                 grouped[weight_col] > 0,
@@ -193,7 +190,6 @@ def calc_weighted_avg_fast(df_in, kpi_cols, group_cols, weight_col="Total Data T
             grouped.drop(columns=[f"_weighted_{col}"], inplace=True)
         return grouped
     else:
-        # Nếu không có cột Traffic thì lấy trung bình cộng
         agg_dict = {col: "mean" for col in cols_to_use}
         return temp_df.groupby(group_cols, as_index=False).agg(agg_dict)
 
@@ -322,27 +318,28 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         
         if fb_tf_df is not None and not fb_tf_df.empty:
             fb_bands = fb_tf_df["Freqband"].tolist()
-            fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
-            fb_bars = ax2_fb.bar(fb_bands, fb_traffics, color='#0284c7', width=0.45, alpha=0.85)
-            ax2_fb.set_title("Tổng Traffic Volume (GB) theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
-            ax2_fb.set_ylabel("Traffic (GB)", fontsize=7.5)
-            ax2_fb.tick_params(axis='both', labelsize=7)
-            ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
-            
-            max_tf = max(fb_traffics) if fb_traffics else 1
-            ax2_fb.set_ylim(0, max_tf * 1.18)
-            
-            for bar in fb_bars:
-                yval = bar.get_height()
-                ax2_fb.text(
-                    bar.get_x() + bar.get_width()/2.0, 
-                    yval + (max_tf * 0.02), 
-                    f"{yval:,.1f} GB", 
-                    ha='center', 
-                    va='bottom', 
-                    fontsize=6.5, 
-                    fontweight='bold'
-                )
+            fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist() if "Total Data Traffic Volume (GB)" in fb_tf_df.columns else []
+            if fb_traffics:
+                fb_bars = ax2_fb.bar(fb_bands, fb_traffics, color='#0284c7', width=0.45, alpha=0.85)
+                ax2_fb.set_title("Tổng Traffic Volume (GB) theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
+                ax2_fb.set_ylabel("Traffic (GB)", fontsize=7.5)
+                ax2_fb.tick_params(axis='both', labelsize=7)
+                ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
+                
+                max_tf = max(fb_traffics) if fb_traffics else 1
+                ax2_fb.set_ylim(0, max_tf * 1.18)
+                
+                for bar in fb_bars:
+                    yval = bar.get_height()
+                    ax2_fb.text(
+                        bar.get_x() + bar.get_width()/2.0, 
+                        yval + (max_tf * 0.02), 
+                        f"{yval:,.1f} GB", 
+                        ha='center', 
+                        va='bottom', 
+                        fontsize=6.5, 
+                        fontweight='bold'
+                    )
 
         plt.tight_layout()
         plt.savefig(fb_img_buf, format='png', dpi=150)
@@ -356,7 +353,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
             total_cells = fb_cell_counts["Số lượng Cell"].sum()
             
             fb_summary_df = fb_cell_counts.copy()
-            if fb_tf_df is not None and not fb_tf_df.empty:
+            if fb_tf_df is not None and not fb_tf_df.empty and "Total Data Traffic Volume (GB)" in fb_tf_df.columns:
                 fb_summary_df = pd.merge(fb_summary_df, fb_tf_df, on="Freqband", how="left").fillna(0)
             else:
                 fb_summary_df["Total Data Traffic Volume (GB)"] = 0.0
@@ -750,6 +747,9 @@ def process_data(file_input):
         st.error(f"❌ Không thể đọc file CSV. Vui lòng kiểm tra định dạng tệp! Chi tiết: {e}")
         st.stop()
 
+    # Chuẩn hóa tên cột (loại bỏ khoảng trắng thừa)
+    df.columns = [c.strip() for c in df.columns]
+
     t_cols = ["Thời gian", "Time", "DateTime", "timestamp"]
     t_col = next((c for c in t_cols if c in df.columns), None)
 
@@ -852,6 +852,12 @@ def process_data(file_input):
 
     for col in existing_num_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # ĐẢM BẢO LUÔN CÓ CỘT TOTAL TRAFFIC VOLUME (GB)
+    if "Total Data Traffic Volume (GB)" not in df.columns:
+        dl_tf = df["Traffic Volumn DL (GB)"] if "Traffic Volumn DL (GB)" in df.columns else 0
+        ul_tf = df["Traffic Volume UL (GB)"] if "Traffic Volume UL (GB)" in df.columns else 0
+        df["Total Data Traffic Volume (GB)"] = dl_tf + ul_tf
 
     if "User Downlink Average Throughput (Kbps)" in df.columns:
         df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
@@ -1170,16 +1176,17 @@ if "Total Data Traffic Volume (GB)" in filtered_df.columns:
 
     grp_cell_cols = [site_col, cell_col] if site_col and cell_col else ([cell_col] if cell_col else [site_col])
     
-    # Tính toán Top Cell cực nhanh bằng hàm Vectorized
     avg_kpis = ["DL_Throughput_Mbps", "Resource Block Untilizing Rate Downlink (%)"]
     top_cell_df = calc_weighted_avg_fast(filtered_df, avg_kpis, grp_cell_cols)
     
-    tf_sums = filtered_df.groupby(grp_cell_cols, as_index=False)[
-        [c for c in ["Total Data Traffic Volume (GB)", "Traffic Volumn DL (GB)", "Traffic Volume UL (GB)"] if c in filtered_df.columns]
-    ].sum()
+    sum_cols_exist = [c for c in ["Total Data Traffic Volume (GB)", "Traffic Volumn DL (GB)", "Traffic Volume UL (GB)"] if c in filtered_df.columns]
+    tf_sums = filtered_df.groupby(grp_cell_cols, as_index=False)[sum_cols_exist].sum()
     
     top_cell_df = pd.merge(tf_sums, top_cell_df, on=grp_cell_cols, how="left")
-    top_cell_df = top_cell_df.sort_values(by="Total Data Traffic Volume (GB)", ascending=False).head(int(top_n_traffic))
+    
+    # BẢO VỆ CHỐNG LỖI KEYERROR TẠI TOP CELL DF
+    sort_col_cell = "Total Data Traffic Volume (GB)" if "Total Data Traffic Volume (GB)" in top_cell_df.columns else top_cell_df.columns[-1]
+    top_cell_df = top_cell_df.sort_values(by=sort_col_cell, ascending=False).head(int(top_n_traffic))
 
     with tab_cell:
         st.markdown(f"**Top {top_n_traffic} Cell có lưu lượng cao nhất:**")
@@ -1187,11 +1194,12 @@ if "Total Data Traffic Volume (GB)" in filtered_df.columns:
 
     if site_col:
         top_site_df = calc_weighted_avg_fast(filtered_df, avg_kpis, [site_col])
-        tf_site_sums = filtered_df.groupby([site_col], as_index=False)[
-            [c for c in ["Total Data Traffic Volume (GB)", "Traffic Volumn DL (GB)", "Traffic Volume UL (GB)"] if c in filtered_df.columns]
-        ].sum()
+        tf_site_sums = filtered_df.groupby([site_col], as_index=False)[sum_cols_exist].sum()
         top_site_df = pd.merge(tf_site_sums, top_site_df, on=[site_col], how="left")
-        top_site_df = top_site_df.sort_values(by="Total Data Traffic Volume (GB)", ascending=False).head(int(top_n_traffic))
+        
+        # BẢO VỆ CHỐNG LỖI KEYERROR TẠI TOP SITE DF
+        sort_col_site = "Total Data Traffic Volume (GB)" if "Total Data Traffic Volume (GB)" in top_site_df.columns else top_site_df.columns[-1]
+        top_site_df = top_site_df.sort_values(by=sort_col_site, ascending=False).head(int(top_n_traffic))
 
         with tab_site:
             st.markdown(f"**Top {top_n_traffic} Site có lưu lượng cao nhất:**")
@@ -1229,28 +1237,23 @@ if cell_col:
     target_col, sort_ascending = available_kpi_options[sel_worst_kpi_lbl]
     grp_worst_cols = [site_col, cell_col] if site_col else [cell_col]
 
-    # Danh sách các KPI cần tính trọng số chuẩn xác
     weighted_kpis = [
         "Call Setup Success Rate", "Service Drop (all service)", "DL_Throughput_Mbps",
         "UL_Throughput_Mbps", "CQI_4G", "Resource Block Untilizing Rate Downlink (%)"
     ]
     mean_kpis = ["Intra-frequency HO (%)", "Inter-RAT HOSR (LTE to WCDMA) (%)", "Inter-frequency HO (%)"]
 
-    # TÍNH TOÁN DỮ LIỆU WORST CELL TỐC ĐỘ CAO CHÍNH XÁC 100%
     cell_agg = calc_weighted_avg_fast(filtered_df, weighted_kpis, grp_worst_cols)
     
-    # Bổ sung các chỉ số tính trung bình cộng
     mean_cols_exist = [c for c in mean_kpis if c in filtered_df.columns]
     if mean_cols_exist:
         mean_df = filtered_df.groupby(grp_worst_cols, as_index=False)[mean_cols_exist].mean()
         cell_agg = pd.merge(cell_agg, mean_df, on=grp_worst_cols, how="left")
 
-    # Bổ sung tổng Traffic
     if "Total Data Traffic Volume (GB)" in filtered_df.columns:
         tf_df = filtered_df.groupby(grp_worst_cols, as_index=False)["Total Data Traffic Volume (GB)"].sum()
         cell_agg = pd.merge(cell_agg, tf_df, on=grp_worst_cols, how="left")
 
-    # Bổ sung VoLTE Drop Rate với trọng số VoLTE Traffic nếu có
     if "Call Drop Rate (VoLTE)" in filtered_df.columns:
         volte_df = calc_weighted_avg_fast(filtered_df, ["Call Drop Rate (VoLTE)"], grp_worst_cols, weight_col="VoLTE Traffic (Erl)")
         cell_agg = pd.merge(cell_agg, volte_df, on=grp_worst_cols, how="left")
@@ -1283,27 +1286,28 @@ if cell_col:
         "srvcc": s_srvcc.mean(),
     }
 
-    # ĐIỀU CHỈNH DỮ LIỆU XU HƯỚNG TỚI BÁO CÁO PDF TỐC ĐỘ CAO & CHÍNH XÁC
     pdf_grp = ["Date", "Hour"] if has_hour else ["Date"]
     pdf_kpis = ["DL_Throughput_Mbps", "UL_Throughput_Mbps", "Service Drop (all service)", "Call Setup Success Rate", "Resource Block Untilizing Rate Downlink (%)"]
     
     c_data_timeline = calc_weighted_avg_fast(filtered_df, pdf_kpis, pdf_grp)
     
-    # Bổ sung các chỉ số VoLTE & Traffic tổng
     volte_pdf = calc_weighted_avg_fast(filtered_df, ["VoLTE E-RAB Call Setup Success Rate", "Call Drop Rate (VoLTE)"], pdf_grp, weight_col="VoLTE Traffic (Erl)")
     if not volte_pdf.empty:
         c_data_timeline = pd.merge(c_data_timeline, volte_pdf, on=pdf_grp, how="left")
 
-    pdf_sums = filtered_df.groupby(pdf_grp, as_index=False)[
-        [c for c in ["Total Data Traffic Volume (GB)", "VoLTE Traffic (Erl)", "Intra-frequency HO (%)", "Inter-frequency HO (%)"] if c in filtered_df.columns]
-    ].agg({
-        "Total Data Traffic Volume (GB)": "sum" if "Total Data Traffic Volume (GB)" in filtered_df.columns else "count",
-        "VoLTE Traffic (Erl)": "sum" if "VoLTE Traffic (Erl)" in filtered_df.columns else "count",
-        "Intra-frequency HO (%)": "mean" if "Intra-frequency HO (%)" in filtered_df.columns else "count",
-        "Inter-frequency HO (%)": "mean" if "Inter-frequency HO (%)" in filtered_df.columns else "count",
-    })
+    pdf_sums_dict = {}
+    if "Total Data Traffic Volume (GB)" in filtered_df.columns:
+        pdf_sums_dict["Total Data Traffic Volume (GB)"] = "sum"
+    if "VoLTE Traffic (Erl)" in filtered_df.columns:
+        pdf_sums_dict["VoLTE Traffic (Erl)"] = "sum"
+    if "Intra-frequency HO (%)" in filtered_df.columns:
+        pdf_sums_dict["Intra-frequency HO (%)"] = "mean"
+    if "Inter-frequency HO (%)" in filtered_df.columns:
+        pdf_sums_dict["Inter-frequency HO (%)"] = "mean"
 
-    c_data_timeline = pd.merge(c_data_timeline, pdf_sums, on=pdf_grp, how="left")
+    if pdf_sums_dict:
+        pdf_sums = filtered_df.groupby(pdf_grp, as_index=False).agg(pdf_sums_dict)
+        c_data_timeline = pd.merge(c_data_timeline, pdf_sums, on=pdf_grp, how="left")
 
     if has_hour and "Hour" in c_data_timeline.columns:
         c_data_timeline["TimeLabel"] = c_data_timeline.apply(lambda r: f"{pd.to_datetime(r['Date']).strftime('%d/%m')} {int(r['Hour']):02d}:00", axis=1)
