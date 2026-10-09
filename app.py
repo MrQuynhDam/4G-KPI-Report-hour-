@@ -164,7 +164,7 @@ def get_sample_file_bytes():
     return None, None
 
 
-def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None):
+def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, worst10_cssr, worst10_dcr, worst10_intra_ho, worst10_inter_ho, fb_cell_counts=None, fb_tf_df=None, cell_type_counts=None):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
@@ -230,15 +230,26 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(grid_cards)
     story.append(Spacer(1, 8))
 
-    # MỤC II. FREQBAND CHARTS
-    if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
+    def p_cell(text, is_bold=False, align='left', color_hex='#0f172a', font_sz=7.5):
+        p_st = ParagraphStyle('PC', fontName=FONT_NAME if not is_bold else FONT_NAME_BOLD, fontSize=font_sz, textColor=colors.HexColor(color_hex), leading=font_sz+1.5, alignment=0 if align=='left' else (1 if align=='center' else 2))
+        txt = f"<b>{text}</b>" if is_bold else str(text)
+        return Paragraph(txt, p_st)
+
+    # MỤC II. FREQBAND & LOẠI CELL (VNP / MORAN)
+    has_fb_data = fb_cell_counts is not None and not fb_cell_counts.empty
+    has_type_data = cell_type_counts is not None and not cell_type_counts.empty
+    has_tf_data = fb_tf_df is not None and not fb_tf_df.empty
+
+    if has_fb_data or has_type_data or has_tf_data:
         story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
         story.append(Spacer(1, 2))
         
+        # 1. Biểu đồ trực quan (Subplots: Freqband Pie, Cell Type Pie, Traffic Bar)
         fb_img_buf = io.BytesIO()
-        fig_fb, (ax1_fb, ax2_fb) = plt.subplots(1, 2, figsize=(11, 2.8), dpi=150)
+        fig_fb, (ax1_fb, ax2_fb, ax3_fb) = plt.subplots(1, 3, figsize=(11, 2.5), dpi=150)
         
-        if fb_cell_counts is not None and not fb_cell_counts.empty:
+        # Chart 1: Cell count theo Freqband
+        if has_fb_data:
             fb_labels = fb_cell_counts["Freqband"].tolist()
             fb_sizes = fb_cell_counts["Số lượng Cell"].tolist()
             fb_colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
@@ -249,44 +260,168 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
                 wedgeprops=dict(width=0.45, edgecolor='white')
             )
             for t in texts:
-                t.set_fontsize(7.5)
+                t.set_fontsize(7)
             for at in autotexts:
-                at.set_fontsize(7)
+                at.set_fontsize(6.5)
                 at.set_weight('bold')
-            ax1_fb.set_title("Số lượng & Tỷ lệ Cell theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
+            ax1_fb.set_title("Số lượng Cell theo Freqband", fontsize=8, fontweight='bold', pad=4)
+        else:
+            ax1_fb.axis('off')
+
+        # Chart 2: Cell count theo Loại Cell (VNP vs MORAN)
+        if has_type_data:
+            type_labels = cell_type_counts["Loại Cell"].tolist()
+            type_sizes = cell_type_counts["Số lượng Cell"].tolist()
+            type_color_map = {"VNP": "#0284c7", "MORAN": "#d97706"}
+            type_colors = [type_color_map.get(lbl, "#64748b") for lbl in type_labels]
+            
+            wedges_t, texts_t, autotexts_t = ax2_fb.pie(
+                type_sizes, labels=type_labels, autopct='%1.1f%%', startangle=90,
+                colors=type_colors,
+                wedgeprops=dict(width=0.45, edgecolor='white')
+            )
+            for t in texts_t:
+                t.set_fontsize(7)
+            for at in autotexts_t:
+                at.set_fontsize(6.5)
+                at.set_weight('bold')
+            ax2_fb.set_title("Loại Cell (VNP vs MORAN)", fontsize=8, fontweight='bold', pad=4)
+        else:
+            ax2_fb.axis('off')
         
-        if fb_tf_df is not None and not fb_tf_df.empty:
+        # Chart 3: Traffic theo Freqband
+        if has_tf_data:
             fb_bands = fb_tf_df["Freqband"].tolist()
             fb_traffics = fb_tf_df["Total Data Traffic Volume (GB)"].tolist()
-            fb_bars = ax2_fb.bar(fb_bands, fb_traffics, color='#0284c7', width=0.45, alpha=0.85)
-            ax2_fb.set_title("Tổng Traffic Volume (GB) theo Freqband", fontsize=8.5, fontweight='bold', pad=6)
-            ax2_fb.set_ylabel("Traffic (GB)", fontsize=7.5)
-            ax2_fb.tick_params(axis='both', labelsize=7)
-            ax2_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
+            fb_bars = ax3_fb.bar(fb_bands, fb_traffics, color='#0284c7', width=0.45, alpha=0.85)
+            ax3_fb.set_title("Tổng Traffic (GB) theo Freqband", fontsize=8, fontweight='bold', pad=4)
+            ax3_fb.set_ylabel("Traffic (GB)", fontsize=7)
+            ax3_fb.tick_params(axis='both', labelsize=6.5)
+            ax3_fb.grid(True, linestyle='--', alpha=0.25, axis='y')
             
             max_tf = max(fb_traffics) if fb_traffics else 1
-            ax2_fb.set_ylim(0, max_tf * 1.18)
+            ax3_fb.set_ylim(0, max_tf * 1.20)
             
             for bar in fb_bars:
                 yval = bar.get_height()
-                ax2_fb.text(
+                ax3_fb.text(
                     bar.get_x() + bar.get_width()/2.0, 
                     yval + (max_tf * 0.02), 
-                    f"{yval:,.1f} GB", 
+                    f"{yval:,.0f}G", 
                     ha='center', 
                     va='bottom', 
-                    fontsize=6.5, 
+                    fontsize=6, 
                     fontweight='bold'
                 )
+        else:
+            ax3_fb.axis('off')
 
         plt.tight_layout()
         plt.savefig(fb_img_buf, format='png', dpi=150)
         plt.close()
         fb_img_buf.seek(0)
-        story.append(Image(fb_img_buf, width=740, height=188))
+        story.append(Image(fb_img_buf, width=740, height=165))
+        story.append(Spacer(1, 6))
+
+        # 2. Hai bảng thống kê chi tiết theo Freqband & Loại Cell (VNP / MORAN)
+        tbl_fb_rows = [[
+            p_cell("Freqband", True, 'center', '#ffffff', 7),
+            p_cell("Số Cell", True, 'center', '#ffffff', 7),
+            p_cell("Tỷ lệ Cell", True, 'center', '#ffffff', 7),
+            p_cell("Traffic (GB)", True, 'center', '#ffffff', 7),
+            p_cell("Tỷ lệ Traffic", True, 'center', '#ffffff', 7),
+        ]]
+        
+        tot_cells_fb = fb_cell_counts["Số lượng Cell"].sum() if has_fb_data else 0
+        tot_tf_all = fb_tf_df["Total Data Traffic Volume (GB)"].sum() if has_tf_data else 0
+
+        if has_fb_data:
+            tf_lookup = dict(zip(fb_tf_df["Freqband"], fb_tf_df["Total Data Traffic Volume (GB)"])) if has_tf_data else {}
+            for _, r in fb_cell_counts.iterrows():
+                band = str(r["Freqband"])
+                c_cnt = int(r["Số lượng Cell"])
+                c_pct = (c_cnt / tot_cells_fb * 100) if tot_cells_fb > 0 else 0
+                b_tf = tf_lookup.get(band, 0.0)
+                tf_pct = (b_tf / tot_tf_all * 100) if tot_tf_all > 0 else 0
+
+                tbl_fb_rows.append([
+                    p_cell(band, True, 'center', '#1e293b', 7),
+                    p_cell(f"{c_cnt:,}", False, 'center', '#0f172a', 7),
+                    p_cell(f"{c_pct:.1f}%", False, 'center', '#0f172a', 7),
+                    p_cell(f"{b_tf:,.1f}", False, 'right', '#0f172a', 7),
+                    p_cell(f"{tf_pct:.1f}%", False, 'center', '#0f172a', 7),
+                ])
+            # Hàng tổng cộng
+            tbl_fb_rows.append([
+                p_cell("Tổng cộng", True, 'center', '#0f172a', 7),
+                p_cell(f"{tot_cells_fb:,}", True, 'center', '#0f172a', 7),
+                p_cell("100.0%", True, 'center', '#0f172a', 7),
+                p_cell(f"{tot_tf_all:,.1f}", True, 'right', '#0f172a', 7),
+                p_cell("100.0%", True, 'center', '#0f172a', 7),
+            ])
+
+        t_fb_table = Table(tbl_fb_rows, colWidths=[70, 70, 75, 105, 80])
+        t_fb_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a8a")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
+        ]))
+
+        # Bảng Loại Cell (VNP / MORAN)
+        tbl_type_rows = [[
+            p_cell("Loại Cell", True, 'center', '#ffffff', 7),
+            p_cell("Số Cell", True, 'center', '#ffffff', 7),
+            p_cell("Tỷ lệ Cell", True, 'center', '#ffffff', 7),
+            p_cell("Mô tả / Diễn giải", True, 'center', '#ffffff', 7),
+        ]]
+
+        tot_cells_type = cell_type_counts["Số lượng Cell"].sum() if has_type_data else 0
+        if has_type_data:
+            desc_map = {"VNP": "Cell mạng Vinaphone thuần", "MORAN": "Cell chia sẻ mạng MORAN"}
+            for _, r in cell_type_counts.iterrows():
+                ctype = str(r["Loại Cell"])
+                t_cnt = int(r["Số lượng Cell"])
+                t_pct = (t_cnt / tot_cells_type * 100) if tot_cells_type > 0 else 0
+                tbl_type_rows.append([
+                    p_cell(ctype, True, 'center', '#0f172a', 7),
+                    p_cell(f"{t_cnt:,}", False, 'center', '#0f172a', 7),
+                    p_cell(f"{t_pct:.1f}%", False, 'center', '#0f172a', 7),
+                    p_cell(desc_map.get(ctype, "-"), False, 'left', '#475569', 7),
+                ])
+            # Hàng tổng cộng
+            tbl_type_rows.append([
+                p_cell("Tổng cộng", True, 'center', '#0f172a', 7),
+                p_cell(f"{tot_cells_type:,}", True, 'center', '#0f172a', 7),
+                p_cell("100.0%", True, 'center', '#0f172a', 7),
+                p_cell("Tổng số cell kiểm tra", True, 'left', '#0f172a', 7),
+            ])
+
+        t_type_table = Table(tbl_type_rows, colWidths=[65, 65, 65, 145])
+        t_type_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
+        ]))
+
+        combined_tbl = Table([[t_fb_table, t_type_table]], colWidths=[410, 350])
+        combined_tbl.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        story.append(combined_tbl)
         story.append(Spacer(1, 10))
 
     # MỤC III. CHARTS XU HƯỚNG
+    story.append(PageBreak())
     story.append(Paragraph("III. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
     story.append(Spacer(1, 4))
 
@@ -387,11 +522,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(Paragraph("IV. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
     story.append(Spacer(1, 4))
 
-    def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
-        p_st = ParagraphStyle('PC', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
-        txt = f"<b>{text}</b>" if is_bold else str(text)
-        return Paragraph(txt, p_st)
-
     if not top10_cells.empty:
         story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
         story.append(Spacer(1, 2))
@@ -399,19 +529,19 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         tr_sub = top10_cells[tr_cols].head(10)
 
         tr_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff'),
-            p_cell("DL Thrp (Mbps)", True, color_hex='#ffffff'),
-            p_cell("PRB DL (%)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Cell Name", True, 'left', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff'),
+            p_cell("DL Thrp (Mbps)", True, 'right', '#ffffff'),
+            p_cell("PRB DL (%)", True, 'right', '#ffffff')
         ]]
         for _, row in tr_sub.iterrows():
             tr_data.append([
                 p_cell(row.iloc[0] if len(row) > 0 else ""),
                 p_cell(row.iloc[1] if len(row) > 1 else ""),
-                p_cell(f"{row.iloc[2]:,.2f}" if len(row) > 2 and pd.notnull(row.iloc[2]) else "0.00"),
-                p_cell(f"{row.iloc[3]:.2f}" if len(row) > 3 and pd.notnull(row.iloc[3]) else "0.00"),
-                p_cell(f"{row.iloc[4]:.2f}" if len(row) > 4 and pd.notnull(row.iloc[4]) else "0.00")
+                p_cell(f"{row.iloc[2]:,.2f}" if len(row) > 2 and pd.notnull(row.iloc[2]) else "0.00", False, 'right'),
+                p_cell(f"{row.iloc[3]:.2f}" if len(row) > 3 and pd.notnull(row.iloc[3]) else "0.00", False, 'right'),
+                p_cell(f"{row.iloc[4]:.2f}" if len(row) > 4 and pd.notnull(row.iloc[4]) else "0.00", False, 'right')
             ])
 
         t_tr = Table(tr_data, colWidths=[130, 180, 110, 110, 110])
@@ -432,17 +562,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         ts_sub = top10_sites[ts_cols].head(10)
 
         ts_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff'),
-            p_cell("DL Thrp Avg (Mbps)", True, color_hex='#ffffff'),
-            p_cell("PRB DL Avg (%)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff'),
+            p_cell("DL Thrp Avg (Mbps)", True, 'right', '#ffffff'),
+            p_cell("PRB DL Avg (%)", True, 'right', '#ffffff')
         ]]
         for _, row in ts_sub.iterrows():
             ts_data.append([
                 p_cell(row.iloc[0] if len(row) > 0 else ""),
-                p_cell(f"{row.iloc[1]:,.2f}" if len(row) > 1 and pd.notnull(row.iloc[1]) else "0.00"),
-                p_cell(f"{row.iloc[2]:.2f}" if len(row) > 2 and pd.notnull(row.iloc[2]) else "0.00"),
-                p_cell(f"{row.iloc[3]:.2f}" if len(row) > 3 and pd.notnull(row.iloc[3]) else "0.00")
+                p_cell(f"{row.iloc[1]:,.2f}" if len(row) > 1 and pd.notnull(row.iloc[1]) else "0.00", False, 'right'),
+                p_cell(f"{row.iloc[2]:.2f}" if len(row) > 2 and pd.notnull(row.iloc[2]) else "0.00", False, 'right'),
+                p_cell(f"{row.iloc[3]:.2f}" if len(row) > 3 and pd.notnull(row.iloc[3]) else "0.00", False, 'right')
             ])
 
         t_ts = Table(ts_data, colWidths=[180, 150, 150, 160])
@@ -468,17 +598,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_sub = worst10_cssr.head(10)
         
         w_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("CSSR (%)", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Cell Name", True, 'left', '#ffffff'),
+            p_cell("CSSR (%)", True, 'center', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
                 p_cell(row.get("Site Name", "")),
                 p_cell(row.get("Tên đối tượng", row.get("Cell Name", ""))),
-                p_cell(f"{row.get('Call Setup Success Rate', 0):.2f}%"),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
+                p_cell(f"{row.get('Call Setup Success Rate', 0):.2f}%", False, 'center'),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}", False, 'right')
             ])
         t_cssr = Table(w_data, colWidths=[180, 220, 170, 170])
         t_cssr.setStyle(TableStyle([
@@ -497,17 +627,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_sub = worst10_dcr.head(10)
         
         w_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Service Drop Rate (%)", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Cell Name", True, 'left', '#ffffff'),
+            p_cell("Service Drop Rate (%)", True, 'center', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
                 p_cell(row.get("Site Name", "")),
                 p_cell(row.get("Tên đối tượng", row.get("Cell Name", ""))),
-                p_cell(f"{row.get('Service Drop (all service)', 0):.3f}%"),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
+                p_cell(f"{row.get('Service Drop (all service)', 0):.3f}%", False, 'center'),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}", False, 'right')
             ])
         t_dcr = Table(w_data, colWidths=[180, 220, 170, 170])
         t_dcr.setStyle(TableStyle([
@@ -526,17 +656,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_sub = worst10_intra_ho.head(10)
         
         w_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Intra-freq HO (%)", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Cell Name", True, 'left', '#ffffff'),
+            p_cell("Intra-freq HO (%)", True, 'center', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
                 p_cell(row.get("Site Name", "")),
                 p_cell(row.get("Tên đối tượng", row.get("Cell Name", ""))),
-                p_cell(f"{row.get('Intra-frequency HO (%)', 0):.2f}%"),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
+                p_cell(f"{row.get('Intra-frequency HO (%)', 0):.2f}%", False, 'center'),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}", False, 'right')
             ])
         t_ho = Table(w_data, colWidths=[180, 220, 170, 170])
         t_ho.setStyle(TableStyle([
@@ -555,17 +685,17 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         w_sub = worst10_inter_ho.head(10)
         
         w_data = [[
-            p_cell("Site Name", True, color_hex='#ffffff'),
-            p_cell("Cell Name", True, color_hex='#ffffff'),
-            p_cell("Inter-freq HO (%)", True, color_hex='#ffffff'),
-            p_cell("Total Traffic (GB)", True, color_hex='#ffffff')
+            p_cell("Site Name", True, 'left', '#ffffff'),
+            p_cell("Cell Name", True, 'left', '#ffffff'),
+            p_cell("Inter-freq HO (%)", True, 'center', '#ffffff'),
+            p_cell("Total Traffic (GB)", True, 'right', '#ffffff')
         ]]
         for _, row in w_sub.iterrows():
             w_data.append([
                 p_cell(row.get("Site Name", "")),
                 p_cell(row.get("Tên đối tượng", row.get("Cell Name", ""))),
-                p_cell(f"{row.get('Inter-frequency HO (%)', 0):.2f}%"),
-                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}")
+                p_cell(f"{row.get('Inter-frequency HO (%)', 0):.2f}%", False, 'center'),
+                p_cell(f"{row.get('Total Data Traffic Volume (GB)', 0):,.2f}", False, 'right')
             ])
         t_inter_ho = Table(w_data, colWidths=[180, 220, 170, 170])
         t_inter_ho.setStyle(TableStyle([
@@ -587,18 +717,10 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
-    # thousands=',' : số dạng "5,512.99" (dấu phẩy ngăn cách hàng nghìn) phải được đọc thành số,
-    # nếu không pd.to_numeric(errors="coerce") sẽ biến toàn bộ giá trị >= 1000 thành NaN
-    df = pd.read_csv(file_input, thousands=",")
+    df = pd.read_csv(file_input)
 
     # Chuẩn hóa tên cột
-    df.columns = [str(c).strip().lstrip("\ufeff") for c in df.columns]
-
-    # Phòng hờ: cột số vẫn là chuỗi có dấu phẩy (vd. file đã đọc kiểu khác) -> bỏ dấu phẩy
-    def _clean_num(series):
-        if series.dtype == object or str(series.dtype).startswith("str"):
-            return pd.to_numeric(series.astype(str).str.replace(",", "", regex=False).str.strip(), errors="coerce")
-        return pd.to_numeric(series, errors="coerce")
+    df.columns = [str(c).strip() for c in df.columns]
 
     # Mapping Alias cột
     alias_map = {
@@ -665,68 +787,63 @@ def process_data(file_input):
 
     found_dl_kbps = next((c for c in dl_kbps_cols if c in df.columns), None)
     if found_dl_kbps:
-        df["User Downlink Average Throughput (Kbps)"] = _clean_num(df[found_dl_kbps])
+        df["User Downlink Average Throughput (Kbps)"] = pd.to_numeric(df[found_dl_kbps], errors="coerce")
         df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
     else:
         dl_mbps_cols = ["DL_Throughput_Mbps", "User Downlink Average Throughput (Mbps)", "DL Throughput (Mbps)", "User DL Throughput (Mbps)"]
         found_dl_mbps = next((c for c in dl_mbps_cols if c in df.columns), None)
         if found_dl_mbps:
-            df["DL_Throughput_Mbps"] = _clean_num(df[found_dl_mbps])
+            df["DL_Throughput_Mbps"] = pd.to_numeric(df[found_dl_mbps], errors="coerce")
             df["User Downlink Average Throughput (Kbps)"] = df["DL_Throughput_Mbps"] * 1000.0
 
     found_ul_kbps = next((c for c in ul_kbps_cols if c in df.columns), None)
     if found_ul_kbps:
-        df["User Uplink Average Throughput (Kbps)"] = _clean_num(df[found_ul_kbps])
+        df["User Uplink Average Throughput (Kbps)"] = pd.to_numeric(df[found_ul_kbps], errors="coerce")
         df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"] / 1000.0
     else:
         ul_mbps_cols = ["UL_Throughput_Mbps", "User Uplink Average Throughput (Mbps)", "UL Throughput (Mbps)", "User UL Throughput (Mbps)"]
         found_ul_mbps = next((c for c in ul_mbps_cols if c in df.columns), None)
         if found_ul_mbps:
-            df["UL_Throughput_Mbps"] = _clean_num(df[found_ul_mbps])
+            df["UL_Throughput_Mbps"] = pd.to_numeric(df[found_ul_mbps], errors="coerce")
             df["User Uplink Average Throughput (Kbps)"] = df["UL_Throughput_Mbps"] * 1000.0
 
     # Parse DateTime & Hour
-    # Xác định "có giờ thật hay không" TRƯỚC khi tạo cột Hour (tránh việc cột Hour tự tạo làm has_hour luôn = True)
-    has_hour_col = "Hour" in df.columns
-    has_hour = False
-
     if "DateTime" in df.columns:
         df["DateTime"] = pd.to_datetime(df["DateTime"], dayfirst=True, errors="coerce")
         df["DateTime"] = df["DateTime"].fillna(pd.Timestamp.now())
-        dt_has_time = bool(((df["DateTime"].dt.hour != 0) | (df["DateTime"].dt.minute != 0)).any())
-
-        if has_hour_col:
-            # File có cột Giờ riêng (vd. "13:00" hoặc 13) -> ghép vào DateTime
-            hr = pd.to_numeric(df["Hour"].astype(str).str.extract(r"(\d{1,2})")[0], errors="coerce")
-            if hr.notnull().any():
-                df["Hour"] = hr.fillna(0).astype(int)
-                if not dt_has_time:
-                    df["DateTime"] = df["DateTime"].dt.normalize() + pd.to_timedelta(df["Hour"], unit="h")
-                has_hour = True
-            else:
-                df["Hour"] = df["DateTime"].dt.hour
-                has_hour = dt_has_time
-        else:
-            df["Hour"] = df["DateTime"].dt.hour
-            has_hour = dt_has_time   # Chỉ có ngày (không có giờ) -> False
-
         df["Date"] = df["DateTime"].dt.date
+        df["Hour"] = df["DateTime"].dt.hour
     else:
         df["DateTime"] = pd.Timestamp.now()
         df["Date"] = df["DateTime"].dt.date
         df["Hour"] = 0
 
+    # Kiểm tra xem dữ liệu có chứa thông tin giờ thực sự không
+    has_hour = df["Hour"].nunique() > 1 or any(c in df.columns for c in ["Giờ", "Hour", "hour"])
     df["_has_hour_col"] = has_hour
 
-    # Freqband
+    # Phân loại Loại Cell (VNP / MORAN) & Trích xuất Freqband
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
     if cell_col_name and cell_col_name in df.columns:
+        def classify_cell(cell_name):
+            s = str(cell_name).strip()
+            # 4G-TPH035S11-TGG >>> cell VNP
+            # VNP-4G-TNO801M32-DTP >>> cell MORAN
+            if s.upper().startswith("VNP-") or "MORAN" in s.upper():
+                return "MORAN"
+            return "VNP"
+
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
-            if len(s) >= 11:
-                char = s[10]
-                return f"F{char}" if not char.startswith("F") else char
+            # Bỏ tiền tố VNP- nếu có để chuẩn hóa cấu trúc 4G-XXXXXX...
+            core = s[4:].strip() if s.upper().startswith("VNP-") else s
+            # Ký tự thứ 11 (index 10) đại diện cho tần số: 1 ~ F1, 3 ~ F3, 4 ~ F4, 5 ~ F5
+            if len(core) >= 11:
+                char = core[10]
+                return f"F{char}" if not str(char).startswith("F") else str(char)
             return "N/A"
+
+        df["Loại Cell"] = df[cell_col_name].apply(classify_cell)
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
 
     num_cols = [
@@ -752,114 +869,75 @@ def process_data(file_input):
 
     for col in num_cols:
         if col in df.columns:
-            df[col] = _clean_num(df[col])
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df
 
 
 # Hàm gom nhóm tính Trung bình Trọng số chuẩn xác
 def aggregate_kpis(df_in, group_cols):
-    """Gom nhóm + trung bình có trọng số theo Traffic (bản vectorized, không dùng groupby.apply).
+    """Gom nhóm và tính trung bình có trọng số theo Traffic chuẩn cho từng KPI"""
+    def calc_group(g):
+        res = {}
+        tot_tf = g['Total Data Traffic Volume (GB)'].sum() if 'Total Data Traffic Volume (GB)' in g else 0
+        dl_tf = g['Traffic Volumn DL (GB)'].sum() if 'Traffic Volumn DL (GB)' in g else tot_tf
+        ul_tf = g['Traffic Volume UL (GB)'].sum() if 'Traffic Volume UL (GB)' in g else tot_tf
 
-    Thay vì gọi một hàm Python cho từng group (rất chậm khi có hàng nghìn cell),
-    ta tính sẵn các cột tích (kpi*trọng số) rồi dùng groupby.agg một lần.
-    """
-    if isinstance(group_cols, str):
-        group_cols = [group_cols]
-    group_cols = list(group_cols)
+        res['Total Data Traffic Volume (GB)'] = tot_tf
+        if 'Traffic Volumn DL (GB)' in g:
+            res['Traffic Volumn DL (GB)'] = dl_tf
+        if 'Traffic Volume UL (GB)' in g:
+            res['Traffic Volume UL (GB)'] = ul_tf
 
-    TOT = 'Total Data Traffic Volume (GB)'
-    DLT = 'Traffic Volumn DL (GB)'
-    ULT = 'Traffic Volume UL (GB)'
-    VOL = 'VoLTE Traffic (Erl)'
-    cols = df_in.columns
+        # DL Throughput trọng số DL Traffic
+        if 'DL_Throughput_Mbps' in g:
+            if dl_tf > 0 and 'Traffic Volumn DL (GB)' in g:
+                res['DL_Throughput_Mbps'] = (g['DL_Throughput_Mbps'] * g['Traffic Volumn DL (GB)']).sum() / dl_tf
+            elif tot_tf > 0 and 'Total Data Traffic Volume (GB)' in g:
+                res['DL_Throughput_Mbps'] = (g['DL_Throughput_Mbps'] * g['Total Data Traffic Volume (GB)']).sum() / tot_tf
+            else:
+                res['DL_Throughput_Mbps'] = g['DL_Throughput_Mbps'].mean()
 
-    nan_s = pd.Series(np.nan, index=df_in.index)
-    tot = df_in[TOT] if TOT in cols else nan_s
-    tmp = {'_tot': tot}          # cột sẽ SUM
-    mean_cols = {}               # cột sẽ MEAN
-    spec = {'_tot': 'sum'}
+        # UL Throughput trọng số UL Traffic
+        if 'UL_Throughput_Mbps' in g:
+            if ul_tf > 0 and 'Traffic Volume UL (GB)' in g:
+                res['UL_Throughput_Mbps'] = (g['UL_Throughput_Mbps'] * g['Traffic Volume UL (GB)']).sum() / ul_tf
+            elif tot_tf > 0 and 'Total Data Traffic Volume (GB)' in g:
+                res['UL_Throughput_Mbps'] = (g['UL_Throughput_Mbps'] * g['Total Data Traffic Volume (GB)']).sum() / tot_tf
+            else:
+                res['UL_Throughput_Mbps'] = g['UL_Throughput_Mbps'].mean()
 
-    def add_weighted(key, x, weights):
-        """Với mỗi trọng số w_i: tính sum(x*w) và sum(w) trên các dòng hợp lệ; thêm mean(x) làm fallback."""
-        for i, w in enumerate(weights):
-            valid = x.notna() & w.notna()
-            tmp[f'{key}__n{i}'] = (x * w).where(valid)
-            tmp[f'{key}__d{i}'] = w.where(valid)
-            spec[f'{key}__n{i}'] = 'sum'
-            spec[f'{key}__d{i}'] = 'sum'
-        mean_cols[f'{key}__m'] = x
-        spec[f'{key}__m'] = 'mean'
+        # Các KPI chất lượng & tải trọng số Total Traffic
+        for kpi in ['Call Setup Success Rate', 'Service Drop (all service)', 'CQI_4G', 'Resource Block Untilizing Rate Downlink (%)']:
+            if kpi in g:
+                valid_m = g[kpi].notnull() & g['Total Data Traffic Volume (GB)'].notnull()
+                g_v = g[valid_m]
+                w_sum = g_v['Total Data Traffic Volume (GB)'].sum()
+                if w_sum > 0:
+                    res[kpi] = (g_v[kpi] * g_v['Total Data Traffic Volume (GB)']).sum() / w_sum
+                else:
+                    res[kpi] = g[kpi].mean()
 
-    if DLT in cols:
-        tmp['_dlt'] = df_in[DLT]; spec['_dlt'] = 'sum'
-    if ULT in cols:
-        tmp['_ult'] = df_in[ULT]; spec['_ult'] = 'sum'
+        for kpi in ['Intra-frequency HO (%)', 'Inter-frequency HO (%)', 'SRVCC Success Rate (LTE to WCDMA)']:
+            if kpi in g:
+                res[kpi] = g[kpi].mean()
 
-    dl_weights = ([df_in[DLT]] if DLT in cols else []) + [tot]
-    ul_weights = ([df_in[ULT]] if ULT in cols else []) + [tot]
-    if 'DL_Throughput_Mbps' in cols:
-        add_weighted('dl', df_in['DL_Throughput_Mbps'], dl_weights)
-    if 'UL_Throughput_Mbps' in cols:
-        add_weighted('ul', df_in['UL_Throughput_Mbps'], ul_weights)
+        if 'VoLTE Traffic (Erl)' in g:
+            res['VoLTE Traffic (Erl)'] = g['VoLTE Traffic (Erl)'].sum()
 
-    quality_kpis = [k for k in ['Call Setup Success Rate', 'Service Drop (all service)', 'CQI_4G',
-                                'Resource Block Untilizing Rate Downlink (%)'] if k in cols]
-    for k in quality_kpis:
-        add_weighted(f'q::{k}', df_in[k], [tot])
+        volte_tf = res.get('VoLTE Traffic (Erl)', 0)
+        for kpi in ['VoLTE E-RAB Call Setup Success Rate', 'Call Drop Rate (VoLTE)']:
+            if kpi in g:
+                valid_m = g[kpi].notnull()
+                g_v = g[valid_m]
+                if volte_tf > 0 and 'VoLTE Traffic (Erl)' in g_v:
+                    res[kpi] = (g_v[kpi] * g_v['VoLTE Traffic (Erl)']).sum() / volte_tf
+                else:
+                    res[kpi] = g_v[kpi].mean() if not g_v.empty else 0.0
 
-    mean_kpis = [k for k in ['Intra-frequency HO (%)', 'Inter-frequency HO (%)',
-                             'Inter-RAT HOSR (LTE to WCDMA) (%)', 'SRVCC Success Rate (LTE to WCDMA)'] if k in cols]
-    for k in mean_kpis:
-        mean_cols[f'm::{k}'] = df_in[k]; spec[f'm::{k}'] = 'mean'
+        return pd.Series(res)
 
-    volte_kpis = [k for k in ['VoLTE E-RAB Call Setup Success Rate', 'Call Drop Rate (VoLTE)'] if k in cols]
-    if VOL in cols:
-        tmp['_vol'] = df_in[VOL]; spec['_vol'] = 'sum'
-    for k in volte_kpis:
-        x = df_in[k]
-        if VOL in cols:
-            tmp[f'v::{k}__n'] = (x * df_in[VOL]).where(x.notna())
-            spec[f'v::{k}__n'] = 'sum'
-        mean_cols[f'v::{k}__m'] = x
-        spec[f'v::{k}__m'] = 'mean'
-
-    work = pd.concat([df_in[group_cols], pd.DataFrame(tmp), pd.DataFrame(mean_cols)], axis=1)
-    agg = work.groupby(group_cols, sort=True).agg(spec)
-
-    def wavg(key, n_weights):
-        """Chọn trọng số đầu tiên có tổng > 0; nếu không có thì dùng mean thường."""
-        out = agg[f'{key}__m']
-        for i in reversed(range(n_weights)):
-            d = agg[f'{key}__d{i}']
-            out = pd.Series(np.where(d > 0, agg[f'{key}__n{i}'] / d.where(d > 0), out), index=agg.index)
-        return out
-
-    res = pd.DataFrame(index=agg.index)
-    res[TOT] = agg['_tot']
-    if DLT in cols:
-        res[DLT] = agg['_dlt']
-    if ULT in cols:
-        res[ULT] = agg['_ult']
-    if 'DL_Throughput_Mbps' in cols:
-        res['DL_Throughput_Mbps'] = wavg('dl', len(dl_weights))
-    if 'UL_Throughput_Mbps' in cols:
-        res['UL_Throughput_Mbps'] = wavg('ul', len(ul_weights))
-    for k in quality_kpis:
-        res[k] = wavg(f'q::{k}', 1)
-    for k in mean_kpis:
-        res[k] = agg[f'm::{k}']
-    if VOL in cols:
-        res[VOL] = agg['_vol']
-    for k in volte_kpis:
-        if VOL in cols:
-            vt = agg['_vol']
-            res[k] = pd.Series(np.where(vt > 0, agg[f'v::{k}__n'] / vt.where(vt > 0), agg[f'v::{k}__m']),
-                               index=agg.index).fillna(0.0)
-        else:
-            res[k] = agg[f'v::{k}__m'].fillna(0.0)
-
-    return res.reset_index()
+    return df_in.groupby(group_cols, group_keys=False).apply(calc_group).reset_index()
 
 
 # ---------------------------------------------------------
@@ -1030,39 +1108,71 @@ with c5:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 5.5 THỐNG KÊ FREQBAND
+# 5.5 THỐNG KÊ FREQBAND & LOẠI CELL (VNP / MORAN)
 # ---------------------------------------------------------
-st.subheader("📊 Thống Kê Phân Bổ Cell & Traffic Theo Freqband")
-
-fb_col1, fb_col2 = st.columns(2)
+st.subheader("📊 Thống Kê Phân Bổ Cell & Traffic Theo Freqband & Loại Cell")
 
 fb_cell_counts = pd.DataFrame()
 fb_tf_df = pd.DataFrame()
+cell_type_counts = pd.DataFrame()
 
-if cell_col and cell_col in filtered_df.columns and "Freqband" in filtered_df.columns:
-    cell_fb_df = filtered_df[[cell_col, "Freqband"]].drop_duplicates()
-    fb_cell_counts = cell_fb_df["Freqband"].value_counts().reset_index()
-    fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
-    fb_cell_counts = fb_cell_counts.sort_values(by="Freqband")
+if cell_col and cell_col in filtered_df.columns:
+    cols_to_use = [cell_col]
+    if "Freqband" in filtered_df.columns:
+        cols_to_use.append("Freqband")
+    if "Loại Cell" in filtered_df.columns:
+        cols_to_use.append("Loại Cell")
 
-    fig_fb_cell = px.pie(
-        fb_cell_counts,
-        names="Freqband",
-        values="Số lượng Cell",
-        title="<b>Tỷ lệ & Số lượng Cell theo Freqband</b>",
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Pastel
-    )
-    fig_fb_cell.update_traces(textinfo="label+value+percent", textfont_size=12)
-    fig_fb_cell.update_layout(template="plotly_dark", height=320, margin=dict(l=20, r=20, t=40, b=20))
+    cell_dist_df = filtered_df[cols_to_use].drop_duplicates()
 
-    with fb_col1:
-        st.plotly_chart(fig_fb_cell, use_container_width=True)
+    # 1. Thống kê số lượng cell theo Freqband
+    if "Freqband" in cell_dist_df.columns:
+        fb_cell_counts = cell_dist_df["Freqband"].value_counts().reset_index()
+        fb_cell_counts.columns = ["Freqband", "Số lượng Cell"]
+        fb_cell_counts = fb_cell_counts.sort_values(by="Freqband")
 
-    if "Total Data Traffic Volume (GB)" in filtered_df.columns:
+    # 2. Thống kê số lượng cell theo Loại Cell (VNP hoặc MORAN)
+    if "Loại Cell" in cell_dist_df.columns:
+        cell_type_counts = cell_dist_df["Loại Cell"].value_counts().reset_index()
+        cell_type_counts.columns = ["Loại Cell", "Số lượng Cell"]
+        cell_type_counts = cell_type_counts.sort_values(by="Loại Cell")
+
+    # 3. Thống kê Traffic theo Freqband
+    if "Total Data Traffic Volume (GB)" in filtered_df.columns and "Freqband" in filtered_df.columns:
         fb_tf_df = filtered_df.groupby("Freqband")["Total Data Traffic Volume (GB)"].sum().reset_index()
         fb_tf_df = fb_tf_df.sort_values(by="Freqband")
 
+    c_fb1, c_fb2, c_fb3 = st.columns(3)
+
+    if not fb_cell_counts.empty:
+        fig_fb_cell = px.pie(
+            fb_cell_counts,
+            names="Freqband",
+            values="Số lượng Cell",
+            title="<b>Số lượng Cell theo Freqband</b>",
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig_fb_cell.update_traces(textinfo="label+value+percent", textfont_size=11)
+        fig_fb_cell.update_layout(template="plotly_dark", height=320, margin=dict(l=10, r=10, t=35, b=10))
+        with c_fb1:
+            st.plotly_chart(fig_fb_cell, use_container_width=True)
+
+    if not cell_type_counts.empty:
+        fig_cell_type = px.pie(
+            cell_type_counts,
+            names="Loại Cell",
+            values="Số lượng Cell",
+            title="<b>Số lượng Cell theo Loại (VNP vs MORAN)</b>",
+            hole=0.4,
+            color_discrete_map={"VNP": "#0284c7", "MORAN": "#d97706"}
+        )
+        fig_cell_type.update_traces(textinfo="label+value+percent", textfont_size=11)
+        fig_cell_type.update_layout(template="plotly_dark", height=320, margin=dict(l=10, r=10, t=35, b=10))
+        with c_fb2:
+            st.plotly_chart(fig_cell_type, use_container_width=True)
+
+    if not fb_tf_df.empty:
         fig_fb_tf = px.bar(
             fb_tf_df,
             x="Freqband",
@@ -1077,13 +1187,30 @@ if cell_col and cell_col in filtered_df.columns and "Freqband" in filtered_df.co
             template="plotly_dark",
             height=320,
             showlegend=False,
-            margin=dict(l=20, r=20, t=40, b=20),
+            margin=dict(l=10, r=10, t=35, b=10),
             yaxis_title="Traffic Volume (GB)",
             xaxis_title="Freqband"
         )
-
-        with fb_col2:
+        with c_fb3:
             st.plotly_chart(fig_fb_tf, use_container_width=True)
+
+    # Bảng chi tiết thống kê Freqband & Loại Cell
+    t_c1, t_c2 = st.columns(2)
+    with t_c1:
+        if not fb_cell_counts.empty:
+            st.markdown("##### 📋 Thống kê số lượng cell theo Freqband")
+            fb_summary = fb_cell_counts.copy()
+            total_c = fb_summary["Số lượng Cell"].sum()
+            fb_summary["Tỷ lệ Cell (%)"] = (fb_summary["Số lượng Cell"] / total_c * 100).round(2).astype(str) + "%"
+            st.dataframe(fb_summary, use_container_width=True, hide_index=True)
+
+    with t_c2:
+        if not cell_type_counts.empty:
+            st.markdown("##### 📋 Thống kê số lượng cell theo Loại Cell (VNP / MORAN)")
+            type_summary = cell_type_counts.copy()
+            total_t = type_summary["Số lượng Cell"].sum()
+            type_summary["Tỷ lệ Cell (%)"] = (type_summary["Số lượng Cell"] / total_t * 100).round(2).astype(str) + "%"
+            st.dataframe(type_summary, use_container_width=True, hide_index=True)
 
 st.markdown("---")
 
@@ -1176,23 +1303,28 @@ with tr_col2:
 
 top_cell_df = pd.DataFrame()
 top_site_df = pd.DataFrame()
-cell_agg_all = None
 
 if "Total Data Traffic Volume (GB)" in filtered_df.columns:
     tab_cell, tab_site = st.tabs(["📱 Top Cell Traffic", "🏢 Top Site Traffic"])
 
     grp_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
     if grp_cols:
-        # Tính MỘT lần, dùng lại cho cả Top Cell Traffic lẫn Worst Cells bên dưới
-        cell_agg_all = aggregate_kpis(filtered_df, grp_cols)
-        top_cell_df = cell_agg_all.nlargest(int(top_n_traffic), "Total Data Traffic Volume (GB)")
+        top_cell_df = (
+            aggregate_kpis(filtered_df, grp_cols)
+            .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
+            .head(int(top_n_traffic))
+        )
 
         with tab_cell:
             st.markdown(f"**Top {top_n_traffic} Cell có lưu lượng cao nhất:**")
             st.dataframe(top_cell_df, use_container_width=True)
 
     if site_col and site_col in filtered_df.columns:
-        top_site_df = aggregate_kpis(filtered_df, [site_col]).nlargest(int(top_n_traffic), "Total Data Traffic Volume (GB)")
+        top_site_df = (
+            aggregate_kpis(filtered_df, [site_col])
+            .sort_values(by="Total Data Traffic Volume (GB)", ascending=False)
+            .head(int(top_n_traffic))
+        )
         with tab_site:
             st.markdown(f"**Top {top_n_traffic} Site có lưu lượng cao nhất:**")
             st.dataframe(top_site_df, use_container_width=True)
@@ -1234,90 +1366,74 @@ if cell_col and cell_col in filtered_df.columns:
 
         grp_worst_cols = [c for c in [site_col, cell_col] if c is not None and c in filtered_df.columns]
         if grp_worst_cols:
-            cell_agg = cell_agg_all if cell_agg_all is not None else aggregate_kpis(filtered_df, grp_worst_cols)
+            cell_agg = aggregate_kpis(filtered_df, grp_worst_cols)
 
-            if target_col in cell_agg.columns:
-                _n = int(top_n_worst)
-                res_df = cell_agg.nsmallest(_n, target_col) if sort_ascending else cell_agg.nlargest(_n, target_col)
-            else:
-                res_df = cell_agg.head(int(top_n_worst))
+            res_df = cell_agg.sort_values(by=target_col, ascending=sort_ascending).head(int(top_n_worst))
 
             st.markdown(f"**Danh sách Top {top_n_worst} Worst Cells theo `{sel_worst_kpi_lbl}`:**")
             st.dataframe(res_df, use_container_width=True)
 
+            worst10_cssr = cell_agg.sort_values(by="Call Setup Success Rate", ascending=True).head(10) if "Call Setup Success Rate" in cell_agg.columns else pd.DataFrame()
+            worst10_dcr = cell_agg.sort_values(by="Service Drop (all service)", ascending=False).head(10) if "Service Drop (all service)" in cell_agg.columns else pd.DataFrame()
+            worst10_intra_ho = cell_agg.sort_values(by="Intra-frequency HO (%)", ascending=True).head(10) if "Intra-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+            worst10_inter_ho = cell_agg.sort_values(by="Inter-frequency HO (%)", ascending=True).head(10) if "Inter-frequency HO (%)" in cell_agg.columns else pd.DataFrame()
+
+            top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
+            top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
+
             st.markdown("---")
             st.markdown("### 📄 PDF Report Export")
-            st.caption("PDF (kèm biểu đồ) chỉ được dựng khi bấm nút, để không làm chậm mỗi lần đổi bộ lọc / Top N.")
+            summary_data = {
+                "tf": s_tf.sum(),
+                "cssr": calc_weighted_avg(filtered_df, "Call Setup Success Rate"),
+                "drop": calc_weighted_avg(filtered_df, "Service Drop (all service)"),
+                "dl": calc_weighted_avg(filtered_df, "DL_Throughput_Mbps"),
+                "ul": calc_weighted_avg(filtered_df, "UL_Throughput_Mbps"),
+                "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
+                "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
+                "intra": s_intra.mean(),
+                "inter": s_inter.mean(),
+                "srvcc": s_srvcc.mean(),
+            }
 
-            _pdf_sig = (len(filtered_df), round(float(s_tf.sum()), 3), tuple(map(str, sel_dates)), len(sel_sites))
+            timeline_grp = [c for c in ["Date", "Hour", "DateTime"] if c in filtered_df.columns]
+            if not has_hour and "Hour" in timeline_grp:
+                timeline_grp.remove("Hour")
+            if timeline_grp:
+                c_data_timeline = aggregate_kpis(filtered_df, timeline_grp)
 
-            if st.button("📑 Tạo Báo Cáo PDF"):
-                with st.spinner("Đang tạo PDF..."):
-                    _top = lambda col, asc: (cell_agg.nsmallest(10, col) if asc else cell_agg.nlargest(10, col)) if col in cell_agg.columns else pd.DataFrame()
-                    worst10_cssr = _top("Call Setup Success Rate", True)
-                    worst10_dcr = _top("Service Drop (all service)", False)
-                    worst10_intra_ho = _top("Intra-frequency HO (%)", True)
-                    worst10_inter_ho = _top("Inter-frequency HO (%)", True)
-
-                    top10_sites_pdf = top_site_df.head(10) if not top_site_df.empty else pd.DataFrame()
-                    top10_cells_pdf = top_cell_df.head(10) if not top_cell_df.empty else pd.DataFrame()
-
-                    summary_data = {
-                        "tf": s_tf.sum(),
-                        "cssr": calc_weighted_avg(filtered_df, "Call Setup Success Rate"),
-                        "drop": calc_weighted_avg(filtered_df, "Service Drop (all service)"),
-                        "dl": calc_weighted_avg(filtered_df, "DL_Throughput_Mbps"),
-                        "ul": calc_weighted_avg(filtered_df, "UL_Throughput_Mbps"),
-                        "cqi": calc_weighted_avg(filtered_df, "CQI_4G"),
-                        "prb": calc_weighted_avg(filtered_df, "Resource Block Untilizing Rate Downlink (%)"),
-                        "intra": s_intra.mean(),
-                        "inter": s_inter.mean(),
-                        "srvcc": s_srvcc.mean(),
-                    }
-
-                    timeline_grp = [c for c in ["Date", "Hour", "DateTime"] if c in filtered_df.columns]
-                    if not has_hour and "Hour" in timeline_grp:
-                        timeline_grp.remove("Hour")
-                    if timeline_grp:
-                        c_data_timeline = aggregate_kpis(filtered_df, timeline_grp)
-
-                        if "DateTime" in c_data_timeline.columns:
-                            c_data_timeline = c_data_timeline.sort_values(by="DateTime")
-                            fmt_str = "%d/%m %H:00" if has_hour else "%d/%m"
-                            c_data_timeline["TimeLabel"] = pd.to_datetime(c_data_timeline["DateTime"]).dt.strftime(fmt_str)
-                        elif "Date" in c_data_timeline.columns:
-                            c_data_timeline["TimeLabel"] = pd.to_datetime(c_data_timeline["Date"]).dt.strftime("%d/%m")
-                        elif "Hour" in c_data_timeline.columns:
-                            c_data_timeline["TimeLabel"] = c_data_timeline["Hour"].astype(str) + ":00"
-                        else:
-                            c_data_timeline["TimeLabel"] = "Timeline"
-                    else:
-                        c_data_timeline = pd.DataFrame()
-
-                    pdf_buf = generate_pdf_report(
-                        summary_data,
-                        c_data_timeline,
-                        top10_sites_pdf,
-                        top10_cells_pdf,
-                        worst10_cssr,
-                        worst10_dcr,
-                        worst10_intra_ho,
-                        worst10_inter_ho,
-                        fb_cell_counts,
-                        fb_tf_df
-                    )
-                    st.session_state["pdf_bytes"] = pdf_buf.getvalue()
-                    st.session_state["pdf_sig"] = _pdf_sig
-
-            if st.session_state.get("pdf_bytes") is not None:
-                if st.session_state.get("pdf_sig") == _pdf_sig:
-                    st.download_button(
-                        label="⬇️ Tải Báo Cáo PDF",
-                        data=st.session_state["pdf_bytes"],
-                        file_name="4G_Network_Health.pdf",
-                        mime="application/pdf",
-                    )
+                if "DateTime" in c_data_timeline.columns:
+                    c_data_timeline = c_data_timeline.sort_values(by="DateTime")
+                    fmt_str = "%d/%m %H:00" if has_hour else "%d/%m"
+                    c_data_timeline["TimeLabel"] = pd.to_datetime(c_data_timeline["DateTime"]).dt.strftime(fmt_str)
+                elif "Date" in c_data_timeline.columns:
+                    c_data_timeline["TimeLabel"] = pd.to_datetime(c_data_timeline["Date"]).dt.strftime("%d/%m")
+                elif "Hour" in c_data_timeline.columns:
+                    c_data_timeline["TimeLabel"] = c_data_timeline["Hour"].astype(str) + ":00"
                 else:
-                    st.info("Bộ lọc đã thay đổi — bấm 'Tạo Báo Cáo PDF' để tạo lại.")
+                    c_data_timeline["TimeLabel"] = "Timeline"
+            else:
+                c_data_timeline = pd.DataFrame()
+
+            pdf_buf = generate_pdf_report(
+                summary_data,
+                c_data_timeline,
+                top10_sites_pdf,
+                top10_cells_pdf,
+                worst10_cssr,
+                worst10_dcr,
+                worst10_intra_ho,
+                worst10_inter_ho,
+                fb_cell_counts,
+                fb_tf_df,
+                cell_type_counts
+            )
+
+            st.download_button(
+                label="📑 Tải Báo Cáo PDF...",
+                data=pdf_buf,
+                file_name="4G_Network_Health.pdf",
+                mime="application/pdf",
+            )
 
 st.caption("🚀 4G RAN Report — Hourly in 3 or 4 days")
