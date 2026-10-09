@@ -589,7 +589,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 def process_data(file_input):
     df = pd.read_csv(file_input)
 
-    # 0. Chuẩn hóa tên cột gốc
+    # Chuẩn hóa tên cột (xóa khoảng trắng thừa)
     df.columns = [str(c).strip() for c in df.columns]
 
     # Danh sách mapping Alias linh hoạt cho các tên cột
@@ -606,14 +606,6 @@ def process_data(file_input):
         "Total Data Traffic Volume (GB)": ["Total Data Traffic Volume (GB)", "Total Data Traffic (GB)", "Data Traffic (GB)", "Total Traffic (GB)", "Traffic (GB)", "Traffic_GB"],
         "Traffic Volumn DL (GB)": ["Traffic Volumn DL (GB)", "Traffic Volume DL (GB)", "DL Traffic (GB)", "Data Traffic DL (GB)", "Traffic DL (GB)"],
         "Traffic Volume UL (GB)": ["Traffic Volume UL (GB)", "Traffic Volumn UL (GB)", "UL Traffic (GB)", "Data Traffic UL (GB)", "Traffic UL (GB)"],
-
-        # Throughput Direct Mbps
-        "DL_Throughput_Mbps": ["DL_Throughput_Mbps", "User Downlink Average Throughput (Mbps)", "DL Throughput (Mbps)", "User DL Throughput (Mbps)", "User Downlink Average Throughput(Mbps)"],
-        "UL_Throughput_Mbps": ["UL_Throughput_Mbps", "User Uplink Average Throughput (Mbps)", "UL Throughput (Mbps)", "User UL Throughput (Mbps)", "User Uplink Average Throughput(Mbps)"],
-
-        # Throughput Kbps
-        "User Downlink Average Throughput (Kbps)": ["User Downlink Average Throughput (Kbps)", "DL_Throughput_Kbps", "User DL Throughput (Kbps)", "DL Throughput (Kbps)"],
-        "User Uplink Average Throughput (Kbps)": ["User Uplink Average Throughput (Kbps)", "UL_Throughput_Kbps", "User UL Throughput (Kbps)", "UL Throughput (Kbps)"],
 
         # PRB Utilization DL
         "Resource Block Untilizing Rate Downlink (%)": [
@@ -645,7 +637,6 @@ def process_data(file_input):
         "VoLTE Traffic (Erl)": ["VoLTE Traffic (Erl)", "VoLTE Traffic"]
     }
 
-    # Đổi tên các cột khớp về tên chuẩn
     for std_col, aliases in alias_map.items():
         if std_col not in df.columns:
             for alias in aliases:
@@ -653,11 +644,55 @@ def process_data(file_input):
                     df.rename(columns={alias: std_col}, inplace=True)
                     break
 
+    # ---------------------------------------------------------
+    # XỬ LÝ CHÍNH XÁC USER DL & UL THROUGHPUT TỪ CỘT KBPS
+    # ---------------------------------------------------------
+    dl_kbps_cols = [
+        "User Downlink Average Throughput (Kbps)",
+        "User Downlink Average Throughput(Kbps)",
+        "User Downlink Throughput (Kbps)",
+        "User DL Throughput (Kbps)",
+        "DL Throughput (Kbps)",
+        "DL_Throughput_Kbps"
+    ]
+    ul_kbps_cols = [
+        "User Uplink Average Throughput (Kbps)",
+        "User Uplink Average Throughput(Kbps)",
+        "User Uplink Throughput (Kbps)",
+        "User UL Throughput (Kbps)",
+        "UL Throughput (Kbps)",
+        "UL_Throughput_Kbps"
+    ]
+
+    found_dl_kbps = next((c for c in dl_kbps_cols if c in df.columns), None)
+    if found_dl_kbps:
+        df["User Downlink Average Throughput (Kbps)"] = pd.to_numeric(df[found_dl_kbps], errors="coerce")
+        # Luôn quy đổi chính xác từ Kbps sang Mbps (chia 1000)
+        df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
+    else:
+        dl_mbps_cols = ["DL_Throughput_Mbps", "User Downlink Average Throughput (Mbps)", "DL Throughput (Mbps)", "User DL Throughput (Mbps)"]
+        found_dl_mbps = next((c for c in dl_mbps_cols if c in df.columns), None)
+        if found_dl_mbps:
+            df["DL_Throughput_Mbps"] = pd.to_numeric(df[found_dl_mbps], errors="coerce")
+            df["User Downlink Average Throughput (Kbps)"] = df["DL_Throughput_Mbps"] * 1000.0
+
+    found_ul_kbps = next((c for c in ul_kbps_cols if c in df.columns), None)
+    if found_ul_kbps:
+        df["User Uplink Average Throughput (Kbps)"] = pd.to_numeric(df[found_ul_kbps], errors="coerce")
+        # Luôn quy đổi chính xác từ Kbps sang Mbps (chia 1000)
+        df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"] / 1000.0
+    else:
+        ul_mbps_cols = ["UL_Throughput_Mbps", "User Uplink Average Throughput (Mbps)", "UL Throughput (Mbps)", "User UL Throughput (Mbps)"]
+        found_ul_mbps = next((c for c in ul_mbps_cols if c in df.columns), None)
+        if found_ul_mbps:
+            df["UL_Throughput_Mbps"] = pd.to_numeric(df[found_ul_mbps], errors="coerce")
+            df["User Uplink Average Throughput (Kbps)"] = df["UL_Throughput_Mbps"] * 1000.0
+
     # Ghi nhận sự tồn tại của cột Giờ nguyên bản
     has_hour_col = any(c in df.columns for c in ["Giờ", "Hour", "hour"])
     df["_has_hour_col"] = has_hour_col
 
-    # 1. Parse Date/Time
+    # Parse Date/Time
     if "DateTime" in df.columns:
         df["DateTime"] = pd.to_datetime(df["DateTime"], dayfirst=True, errors="coerce")
         df["DateTime"] = df["DateTime"].fillna(pd.Timestamp.now())
@@ -666,13 +701,13 @@ def process_data(file_input):
         df["DateTime"] = pd.Timestamp.now()
         df["Date"] = df["DateTime"].dt.date
 
-    # 2. Parse Hour
+    # Parse Hour
     if "Hour" in df.columns and has_hour_col:
         df["Hour"] = pd.to_numeric(df["Hour"], errors="coerce").fillna(0).astype(int)
     else:
         df["Hour"] = 0
 
-    # 3. Extract Freqband
+    # Freqband
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
     if cell_col_name and cell_col_name in df.columns:
         def extract_freqband(cell_name):
@@ -682,10 +717,8 @@ def process_data(file_input):
                 return f"F{char}" if not char.startswith("F") else char
             return "N/A"
         df["Freqband"] = df[cell_col_name].apply(extract_freqband)
-    else:
-        df["Freqband"] = "N/A"
 
-    # 4. Numeric conversion
+    # Ép kiểu số toàn bộ các cột chỉ số
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Uplink Average Throughput (Kbps)",
@@ -710,21 +743,6 @@ def process_data(file_input):
     for col in num_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # 5. Xử lý thông minh DL / UL Throughput sang Mbps
-    if "DL_Throughput_Mbps" not in df.columns and "User Downlink Average Throughput (Kbps)" in df.columns:
-        s_vals = df["User Downlink Average Throughput (Kbps)"].dropna()
-        if not s_vals.empty and s_vals.mean() > 500:
-            df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"] / 1000.0
-        else:
-            df["DL_Throughput_Mbps"] = df["User Downlink Average Throughput (Kbps)"]
-
-    if "UL_Throughput_Mbps" not in df.columns and "User Uplink Average Throughput (Kbps)" in df.columns:
-        s_vals = df["User Uplink Average Throughput (Kbps)"].dropna()
-        if not s_vals.empty and s_vals.mean() > 200:
-            df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"] / 1000.0
-        else:
-            df["UL_Throughput_Mbps"] = df["User Uplink Average Throughput (Kbps)"]
 
     return df
 
