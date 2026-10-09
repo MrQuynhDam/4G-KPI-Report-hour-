@@ -235,7 +235,12 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     story.append(grid_cards)
     story.append(Spacer(1, 8))
 
-    # MỤC I. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
+    def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
+        p_st = ParagraphStyle('PC', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
+        txt = f"<b>{text}</b>" if is_bold else str(text)
+        return Paragraph(txt, p_st)
+
+    # MỤC II. THỐNG KÊ CELL VÀ TRAFFIC THEO FREQBAND TRONG PDF
     if (fb_cell_counts is not None and not fb_cell_counts.empty) or (fb_tf_df is not None and not fb_tf_df.empty):
         story.append(Paragraph("II. THỐNG KÊ PHÂN BỔ CELL VÀ TRAFFIC THEO FREQBAND", h2_style))
         story.append(Spacer(1, 2))
@@ -289,7 +294,59 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
         plt.close()
         fb_img_buf.seek(0)
         story.append(Image(fb_img_buf, width=740, height=188))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 6))
+
+        # --- BỔ SUNG BẢNG THỐNG KÊ CHI TIẾT SỐ CELL THEO FREQBAND VÀO PDF ---
+        if fb_cell_counts is not None and not fb_cell_counts.empty:
+            total_cells = fb_cell_counts["Số lượng Cell"].sum()
+            
+            # Merged DataFrame giữa Số cell và Traffic để hiển thị bảng đầy đủ
+            fb_summary_df = fb_cell_counts.copy()
+            if fb_tf_df is not None and not fb_tf_df.empty:
+                fb_summary_df = pd.merge(fb_summary_df, fb_tf_df, on="Freqband", how="left").fillna(0)
+            else:
+                fb_summary_df["Total Data Traffic Volume (GB)"] = 0.0
+
+            fb_tbl_data = [[
+                p_cell("Băng Tần (Freqband)", True, color_hex='#ffffff'),
+                p_cell("Số Lượng Cell", True, color_hex='#ffffff', align='center'),
+                p_cell("Tỷ Lệ Cell (%)", True, color_hex='#ffffff', align='center'),
+                p_cell("Tổng Traffic (GB)", True, color_hex='#ffffff', align='center')
+            ]]
+
+            for _, r in fb_summary_df.iterrows():
+                band = str(r["Freqband"])
+                cnt = int(r["Số lượng Cell"])
+                pct = (cnt / total_cells * 100) if total_cells > 0 else 0
+                tf_g = float(r.get("Total Data Traffic Volume (GB)", 0))
+
+                fb_tbl_data.append([
+                    p_cell(f"Băng tần {band}" if not band.startswith("F") else band),
+                    p_cell(f"{cnt:,}", align='center'),
+                    p_cell(f"{pct:.2f}%", align='center'),
+                    p_cell(f"{tf_g:,.2f} GB", align='center')
+                ])
+
+            # Hàng tổng cộng
+            tot_tf = fb_summary_df["Total Data Traffic Volume (GB)"].sum()
+            fb_tbl_data.append([
+                p_cell("Tổng Cộng", True),
+                p_cell(f"{total_cells:,}", True, align='center'),
+                p_cell("100.00%", True, align='center'),
+                p_cell(f"{tot_tf:,.2f} GB", True, align='center')
+            ])
+
+            t_fb = Table(fb_tbl_data, colWidths=[200, 180, 180, 180])
+            t_fb.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e293b")),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+                ("TOPPADDING", (0,0), (-1,-1), 3),
+                ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                ("ROWBACKGROUNDS", (0,1), (-1,-2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e2e8f0")), # Dòng Tổng cộng
+            ]))
+            story.append(t_fb)
+            story.append(Spacer(1, 10))
 
     # MỤC II. 6 CHARTS XU HƯỚNG
     story.append(Paragraph("III. XU HƯỚNG CÁC CHỈ SỐ KPI THEO KHUNG GIỜ/NGÀY", h2_style))
@@ -391,11 +448,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
     # MỤC III. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL
     story.append(Paragraph("IV. DANH SÁCH TOP 10 HIGH TRAFFIC SITE & CELL", h2_style))
     story.append(Spacer(1, 4))
-
-    def p_cell(text, is_bold=False, align='left', color_hex='#0f172a'):
-        p_st = ParagraphStyle('PC', fontName=FONT_NAME, fontSize=7.5, textColor=colors.HexColor(color_hex), leading=9, alignment=0 if align=='left' else 1)
-        txt = f"<b>{text}</b>" if is_bold else str(text)
-        return Paragraph(txt, p_st)
 
     if not top10_cells.empty:
         story.append(Paragraph("<b>1. Top 10 Cell có Lưu lượng Traffic Volume (GB) cao nhất:</b>", norm_style))
@@ -599,7 +651,7 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 
 
 # ---------------------------------------------------------
-# 3. DATA PROCESSING & VALIDATION (ĐÃ BỔ SUNG KIỂM TRA FILE HỢP LỆ)
+# 3. DATA PROCESSING & VALIDATION
 # ---------------------------------------------------------
 @st.cache_data
 def process_data(file_input):
@@ -609,7 +661,6 @@ def process_data(file_input):
         st.error(f"❌ Không thể đọc file CSV. Vui lòng kiểm tra định dạng tệp! Chi tiết: {e}")
         st.stop()
 
-    # 1. Kiểm tra Cột Thời Gian (Bắt buộc phải có 1 trong các cột thời gian)
     t_cols = ["Thời gian", "Time", "DateTime", "timestamp"]
     t_col = next((c for c in t_cols if c in df.columns), None)
 
@@ -633,7 +684,6 @@ def process_data(file_input):
 
     df["Date"] = df["DateTime"].dt.date
 
-    # 2. Kiểm tra Cột Đối tượng (Cell Name / Site Name)
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
     site_col_name = "Site Name" if "Site Name" in df.columns else None
 
@@ -646,7 +696,6 @@ def process_data(file_input):
         )
         st.stop()
 
-    # 3. Kiểm tra Cột Giờ (Hour - Không bắt buộc)
     h_cols = ["Giờ", "Hour", "hour"]
     h_col = next((c for c in h_cols if c in df.columns), None)
     if h_col:
@@ -654,7 +703,6 @@ def process_data(file_input):
     elif df["DateTime"].dt.hour.notnull().any() and (df["DateTime"].dt.hour != 0).any():
         df["Hour"] = df["DateTime"].dt.hour
 
-    # 4. Trích xuất Freqband nếu có tên Cell
     if cell_col_name:
         def extract_freqband(cell_name):
             s = str(cell_name).strip()
@@ -666,7 +714,6 @@ def process_data(file_input):
     else:
         df["Freqband"] = "N/A"
 
-    # 5. Ép kiểu dữ liệu số cho các chỉ số KPI
     num_cols = [
         "User Downlink Average Throughput (Kbps)",
         "User Uplink Average Throughput (Kbps)",
