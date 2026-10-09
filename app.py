@@ -600,17 +600,6 @@ def generate_pdf_report(summary, hourly_trend_df, top10_sites, top10_cells, wors
 def process_data(file_input):
     df = pd.read_csv(file_input)
 
-    # 1. Tự động kiểm tra và thêm cột "Giờ" với giá trị 0 nếu chưa có
-    h_cols = ["Giờ", "Hour", "hour"]
-    h_col = next((c for c in h_cols if c in df.columns), None)
-    
-    if not h_col:
-        df["Giờ"] = 0
-        h_col = "Giờ"
-
-    df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
-
-    # 2. Xử lý cột Thời gian
     t_cols = ["Thời gian", "Time", "DateTime", "timestamp"]
     t_col = next((c for c in t_cols if c in df.columns), None)
 
@@ -620,6 +609,13 @@ def process_data(file_input):
     else:
         st.error("❌ Thiếu cột Thời gian!")
         st.stop()
+
+    h_cols = ["Giờ", "Hour", "hour"]
+    h_col = next((c for c in h_cols if c in df.columns), None)
+    if h_col:
+        df["Hour"] = pd.to_numeric(df[h_col], errors="coerce").fillna(0).astype(int)
+    else:
+        df["Hour"] = df["DateTime"].dt.hour
 
     # TRÍCH XUẤT FREQBAND TỪ KÝ TỰ THỨ 11 CỦA CELLNAME
     cell_col_name = "Tên đối tượng" if "Tên đối tượng" in df.columns else ("Cell Name" if "Cell Name" in df.columns else None)
@@ -917,7 +913,7 @@ sel_kpi_col = avail_kpis[sel_kpi_lbl]
 agg_func = "sum" if "Traffic" in sel_kpi_lbl or "Erl" in sel_kpi_lbl else "mean"
 
 if time_mode == "Chỉ theo giờ (24h Avg)":
-    raw_agg_dict = {
+    c_data = filtered_df.groupby("Hour").agg({
         "Total Data Traffic Volume (GB)": "sum",
         sel_kpi_col: agg_func,
         "DL_Throughput_Mbps": "mean",
@@ -930,11 +926,7 @@ if time_mode == "Chỉ theo giờ (24h Avg)":
         "VoLTE E-RAB Call Setup Success Rate": "mean",
         "Call Drop Rate (VoLTE)": "mean",
         "VoLTE Traffic (Erl)": "sum"
-    }
-    # Chỉ giữ lại các cột có tồn tại trong filtered_df
-    safe_agg_dict = {col: func for col, func in raw_agg_dict.items() if col in filtered_df.columns}
-    
-    c_data = filtered_df.groupby("Hour").agg(safe_agg_dict).reset_index()
+    }).reset_index()
     x_axis = c_data["Hour"]
     x_title = "Giờ trong ngày (0h - 23h)"
 else:
